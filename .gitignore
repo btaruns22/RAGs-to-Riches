@@ -1,0 +1,6 @@
+
+CS_6180_RAG/
+__pycache__/
+*.pyc
+.DS_Store
+.env
