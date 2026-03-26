@@ -66,20 +66,35 @@ Example file: `spy_open_features.csv`
 
 Each row includes:
 - date
-- SPY open
-- previous close
-- gap %
-- first 1-min return
-- first 3-min return
-- first 5-min return
-- opening range high
-- opening range low
-- opening range width
-- total first-5-min volume
-- relative volume
-- volatility measure
-- breakout flag
-- label (TAKE / PASS)
+- spy_open
+- previous_close
+- gap_pct
+- first_1m_return
+- net_movement
+- opening_range_high
+- opening_range_low
+- opening_range_width
+- breakout_direction
+- volatility
+- volume
+- volume_ratio
+- label
+
+Definitions:
+- `date`: trading day in `YYYY-MM-DD`
+- `spy_open`: open price of the `09:30` one-minute candle
+- `previous_close`: previous trading day regular-session close
+- `gap_pct`: percent gap from previous close to the `09:30` open
+- `first_1m_return`: percent return of the first one-minute candle, from `09:30` open to `09:30` close
+- `net_movement`: percent move across the full opening window, from `09:30` open to `09:34` close
+- `opening_range_high`: highest `high` from `09:30` through `09:34`
+- `opening_range_low`: lowest `low` from `09:30` through `09:34`
+- `opening_range_width`: `opening_range_high - opening_range_low`
+- `breakout_direction`: `UP`, `DOWN`, or `NONE` based on the direction of the 5-minute move
+- `volatility`: average intrabar range across the five one-minute candles
+- `volume`: total volume from `09:30` through `09:34`
+- `volume_ratio`: opening-window volume divided by trailing 20-day average opening-window volume
+- `label`: final rule-based ground-truth label such as `TAKE` or `PASS`
 
 This dataset is generated through feature engineering and rule-based labeling from the raw data.
 
