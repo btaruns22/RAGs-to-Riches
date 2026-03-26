@@ -1,7 +1,5 @@
 # RAGs-to-Riches
 
-# RAGs-to-Riches
-
 ## Overview
 RAGs-to-Riches is a research project that explores whether Retrieval-Augmented Generation (RAG) improves the ability of large language models (LLMs) to follow strict, rule-based logic in structured environments. Using financial market data as a test case, the system evaluates whether an intraday trading setup satisfies predefined strategy rules.
 
@@ -108,6 +106,24 @@ Compare baseline vs RAG system using:
 - LLM APIs (GPT-4o, Claude)
 - Vector Database (ChromaDB / Pinecone)
 - RAG Framework (LangChain / LlamaIndex)
+
+## Local Setup
+
+Recommended Python version: `3.11`
+
+The official Massive Python client supports Python `3.9+`, but `3.11` is the most practical team default for this project because it is broadly compatible with the data and RAG libraries in this repo.
+
+Create a virtual environment and install dependencies:
+
+```bash
+python3.11 -m venv CS_6180_RAG
+source CS_6180_RAG/bin/activate
+pip install -r requirements.txt
+```
+
+If `python3.11` is not available on your machine, use another Python `3.9+` interpreter.
+
+The virtual environment directory is ignored via `.gitignore` and should not be committed.
 
 ---
 
