@@ -7,10 +7,9 @@ market signals from the first 5 minutes of the NYSE trading
 session for SPY and decide whether the conditions are good 
 enough to take a trade that day.
 
-You will be given a summary of four signals: breakout 
-direction, net price movement, volatility, and volume. 
-Based on those signals, you need to output exactly three 
-things:
+You will be given a summary of signals from the opening 
+5-minute window. Based on those signals, you need to output 
+exactly three things:
 
 1. DECISION: Either "TAKE TRADE" or "PASS TRADE". These are 
    the only two valid answers.
@@ -34,7 +33,7 @@ EXPLANATION: [Your reasoning here]
 
 
 def features_to_text(row):
-    # Volatility: convert raw number to a readable label
+    # Volatility: convert average intrabar range to a readable label
     if row["volatility"] > 0.015:
         vol_label = "HIGH"
     elif row["volatility"] > 0.007:
@@ -42,7 +41,7 @@ def features_to_text(row):
     else:
         vol_label = "LOW"
 
-    # Volume: compare to average
+    # Volume ratio: compare opening window volume to 20-day average
     if row["volume_ratio"] > 1.1:
         vol_rel = "above"
     elif row["volume_ratio"] < 0.9:
@@ -50,7 +49,7 @@ def features_to_text(row):
     else:
         vol_rel = "in line with"
 
-    breakout = row["breakout_direction"].upper()
+    breakout = row["breakout_direction"].upper()  # UP, DOWN, or NONE
 
     return f"""Date: {row['date']}
 Instrument: SPY
@@ -58,14 +57,14 @@ Prior Close: {row['previous_close']:.2f}
 Today's Open: {row['spy_open']:.2f}
 Gap from Prior Close: {row['gap_pct']:+.2f}%
 
-Market Signal Summary:
+Opening Window Signals (09:30 to 09:34):
 - Breakout Direction: {breakout}
 - First 1-Minute Return: {row['first_1m_return']:+.2f}%
-- First 5-Minute Return: {row['first_5m_return']:+.2f}%
+- Net Movement over Full 5-Minute Window: {row['net_movement']:+.2f}%
 - Opening Range High: {row['opening_range_high']:.2f}
 - Opening Range Low: {row['opening_range_low']:.2f}
 - Opening Range Width: {row['opening_range_width']:.2f} points
-- Volatility: {vol_label}
+- Volatility: {vol_label} (average intrabar range across 5 candles)
 - Volume: {row['volume']/1e6:.2f}M shares, {vol_rel} the 20-day average
 """
 
