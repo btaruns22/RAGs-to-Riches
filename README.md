@@ -32,71 +32,71 @@ Rather than predicting markets, this project focuses on **decision validation** 
 ## Project Structure
 
 ### 1. Data Pipeline
-- Collect historical SPY 1-minute candle data
-- Filter to first 5 minutes of each trading day
-- Engineer structured features:
-  - breakout direction
-  - volatility
-  - volume expansion
-  - momentum indicators
+SPY 1-minute bars are pulled directly from [Massive](https://massive.com) via their S3-compatible flat file endpoint (`us_stocks_sip/minute_aggs_v1/`). The pipeline is implemented in `pull_api.py` and handles the full flow end-to-end:
 
-#### Raw Dataset
-The raw dataset consists of minute-by-minute SPY market data and is stored separately to preserve original signals.
+- Scans S3 to discover all available trading dates in the requested range
+- Downloads each daily file, extracts only SPY rows
+- Filters to the 9:30–9:34 AM ET window (5 one-minute bars per day)
+- Engineers all structured features
+- Applies deterministic labeling rules
+- Saves two output files: `spy_open_raw_minutes.csv` and `spy_open_features.csv`
 
-Example file: `raw_minutes.csv`
+To generate the dataset, run:
 
-Columns:
-- datetime
-- open
-- high
-- low
-- close
-- volume
+```bash
+python pull_api.py
+```
 
-### 2. Dataset Creation
-- Each row represents one trading day
-- Apply deterministic rules to generate:
-  - **Ground truth labels (TAKE / PASS)**
-- Final dataset used for evaluation
+Credentials (`MASSIVE_ACCESS_KEY`, `MASSIVE_SECRET_KEY`, `MASSIVE_S3_ENDPOINT`, `MASSIVE_S3_BUCKET`) must be set in a `.env` file. The `.env` file is gitignored and should not be committed.
 
-#### Processed Feature Dataset
-The processed dataset contains one row per trading day and serves as the model-ready input for evaluation.
+### 2. Datasets
 
-Example file: `spy_open_features.csv`
+The pipeline produces two output files covering approximately 2 years of history.
 
-Each row includes:
-- date
-- spy_open
-- previous_close
-- gap_pct
-- first_1m_return
-- net_movement
-- opening_range_high
-- opening_range_low
-- opening_range_width
-- breakout_direction
-- volatility
-- volume
-- volume_ratio
-- label
+---
 
-Definitions:
-- `date`: trading day in `YYYY-MM-DD`
-- `spy_open`: open price of the `09:30` one-minute candle
-- `previous_close`: previous trading day regular-session close
-- `gap_pct`: percent gap from previous close to the `09:30` open
-- `first_1m_return`: percent return of the first one-minute candle, from `09:30` open to `09:30` close
-- `net_movement`: percent move across the full opening window, from `09:30` open to `09:34` close
-- `opening_range_high`: highest `high` from `09:30` through `09:34`
-- `opening_range_low`: lowest `low` from `09:30` through `09:34`
-- `opening_range_width`: `opening_range_high - opening_range_low`
-- `breakout_direction`: `UP`, `DOWN`, or `NONE` based on the direction of the 5-minute move
-- `volatility`: average intrabar range across the five one-minute candles
-- `volume`: total volume from `09:30` through `09:34`
-- `volume_ratio`: opening-window volume divided by trailing 20-day average opening-window volume
-- `label`: final rule-based ground-truth label such as `TAKE` or `PASS`
+#### `spy_open_raw_minutes.csv` — Raw minute bars (LLM input)
 
-This dataset is generated through feature engineering and rule-based labeling from the raw data.
+5 rows per trading day — one per minute bar. This is what the LLM observes as the opening window unfolds.
+
+| column | description |
+|--------|-------------|
+| `date` | trading day in `YYYY-MM-DD` |
+| `time` | bar time in `HH:MM` ET (09:30 through 09:34) |
+| `open` | bar open price |
+| `high` | bar high price |
+| `low` | bar low price |
+| `close` | bar close price |
+| `volume` | bar volume |
+
+---
+
+#### `spy_open_features.csv` — Engineered features + ground truth (RAG knowledge base)
+
+One row per trading day. Serves as both the RAG retrieval knowledge base and the ground truth for evaluation.
+
+| column | description |
+|--------|-------------|
+| `date` | trading day in `YYYY-MM-DD` |
+| `spy_open` | open price of the `09:30` candle |
+| `previous_close` | previous trading day regular-session close |
+| `gap_pct` | % gap from previous close to `09:30` open |
+| `first_1m_return` | % return of the first candle, `09:30` open to `09:30` close |
+| `net_movement` | % move across the full window, `09:30` open to `09:34` close |
+| `opening_range_high` | highest `high` from `09:30` through `09:34` |
+| `opening_range_low` | lowest `low` from `09:30` through `09:34` |
+| `opening_range_width` | `opening_range_high - opening_range_low` |
+| `breakout_direction` | `UP`, `DOWN`, or `NONE` based on the 5-minute move |
+| `volatility` | average intrabar range across the five candles |
+| `volume` | total volume from `09:30` through `09:34` |
+| `volume_ratio` | opening-window volume divided by trailing 20-day average opening-window volume |
+| `label` | ground truth: `TAKE` or `PASS` |
+
+**Ground truth logic:** `label` is derived from the close of the 5-minute candle (the `09:34` close). A setup is labeled `TAKE` if there is a clear directional breakout (`breakout_direction` is not `NONE`), confirmed by above-average volume (`volume_ratio >= 1.2`), and a meaningful price move (`|net_movement| >= 0.2%`). The exact thresholds are placeholders — the RAG & Evaluation Lead is responsible for finalizing them before the dataset is regenerated.
+
+**How the two files work together:**
+- `spy_open_raw_minutes.csv` is the **signal** — the LLM observes these bars minute-by-minute and tries to identify a valid setup as early as possible (ideally before bar 5)
+- `spy_open_features.csv` is the **memory** — the RAG system retrieves similar historical setups from this file to inform the LLM's decision, and the `label` column is what the LLM's decision is evaluated against
 
 ### 3. Baseline Model
 - LLM receives only structured features
@@ -118,6 +118,7 @@ Compare baseline vs RAG system using:
 
 ## Tech Stack
 - Python (pandas, numpy)
+- Massive S3 flat files (market data source)
 - LLM APIs (GPT-4o, Claude)
 - Vector Database (ChromaDB / Pinecone)
 - RAG Framework (LangChain / LlamaIndex)
@@ -169,15 +170,14 @@ The virtual environment directory is ignored via `.gitignore` and should not be 
 **Goal:** Build dataset, define trading rules, and generate labels
 
 **Data & Feature Engineering Lead (Primary)**
-- Pull historical SPY data
-- Filter to 9:30–9:35 window
-- Group data by day
+- Pull historical SPY data from Massive S3 flat files
+- Filter to 9:30–9:34 window (5 one-minute bars)
 - Engineer features:
   - breakout (up/down)
   - volatility
   - volume
   - net movement
-- Produce final dataset (CSV)
+- Produce `spy_open_raw_minutes.csv` and `spy_open_features.csv`
 
 **RAG & Evaluation Lead**
 - Define trading strategy rules with clear thresholds
