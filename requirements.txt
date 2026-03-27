@@ -1,5 +1,6 @@
 pandas
 numpy
+boto3
 massive
 python-dotenv
 openai
