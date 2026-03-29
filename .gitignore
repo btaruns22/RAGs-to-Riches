@@ -3,5 +3,10 @@ __pycache__/
 *.pyc
 .DS_Store
 .env
-.claude/settings.local.json
+
+# Generated data files — share via Google Drive, not git
 *.csv
+*.csv.gz
+
+# Local Claude Code settings
+.claude/settings.local.json
