@@ -1,0 +1,119 @@
+"""SPY data loading and feature engineering for the 9:30-9:34 opening window."""
+from datetime import datetime
+from typing import Deque, List, Optional
+
+import numpy as np
+import pandas as pd
+from zoneinfo import ZoneInfo
+
+from services.s3_client import list_available_keys, read_daily_file
+
+ET = ZoneInfo("America/New_York")
+
+_OPEN_START = 9 * 60 + 30
+_OPEN_END = 9 * 60 + 34
+
+
+def list_trading_dates(start_date: str, end_date: str) -> List[str]:
+    """Return sorted trading dates in [start_date, end_date] by scanning S3."""
+    start_dt = datetime.strptime(start_date, "%Y-%m-%d")
+    end_dt = datetime.strptime(end_date, "%Y-%m-%d")
+
+    dates = []
+    year, month = start_dt.year, start_dt.month
+
+    while (year, month) <= (end_dt.year, end_dt.month):
+        prefix = f"us_stocks_sip/minute_aggs_v1/{year}/{month:02d}/"
+        for key in list_available_keys(prefix=prefix, limit=31):
+            date_str = key.split("/")[-1].replace(".csv.gz", "")
+            if start_date <= date_str <= end_date:
+                dates.append(date_str)
+        month += 1
+        if month > 12:
+            year, month = year + 1, 1
+
+    return sorted(dates)
+
+
+def load_spy_day(trade_date: str) -> pd.DataFrame:
+    """Load all SPY minute bars for a trading day with ET timestamps attached."""
+    frames = []
+    for chunk in read_daily_file(trade_date):
+        spy = chunk[chunk["ticker"] == "SPY"]
+        if not spy.empty:
+            frames.append(spy.copy())
+
+    if not frames:
+        return pd.DataFrame()
+
+    df = pd.concat(frames, ignore_index=True)
+    df["ts"] = pd.to_datetime(df["window_start"], unit="ns", utc=True).dt.tz_convert(ET)
+    df["minute"] = df["ts"].dt.hour * 60 + df["ts"].dt.minute
+    return df.sort_values("ts").reset_index(drop=True)
+
+
+def extract_open_window(spy_day: pd.DataFrame) -> pd.DataFrame:
+    """Return the 5 bars covering 9:30-9:34 ET."""
+    mask = (spy_day["minute"] >= _OPEN_START) & (spy_day["minute"] <= _OPEN_END)
+    return spy_day[mask].reset_index(drop=True)
+
+
+def get_regular_close(spy_day: pd.DataFrame) -> Optional[float]:
+    """Return SPY close price of the last regular-session bar on or before 4:00 PM."""
+    regular = spy_day[spy_day["minute"] <= 16 * 60]
+    if regular.empty:
+        return None
+    return float(regular.iloc[-1]["close"])
+
+
+def compute_features(
+    trade_date: str,
+    window: pd.DataFrame,
+    prev_close: float,
+    vol_history: Deque,
+) -> Optional[dict]:
+    """Compute the agreed feature schema for one trading day's opening window."""
+    bar_930 = window[window["minute"] == _OPEN_START]
+    bar_934 = window[window["minute"] == _OPEN_END]
+
+    if bar_930.empty or bar_934.empty:
+        return None
+
+    spy_open = float(bar_930.iloc[0]["open"])
+    close_930 = float(bar_930.iloc[0]["close"])
+    close_934 = float(bar_934.iloc[0]["close"])
+
+    gap_pct = (spy_open - prev_close) / prev_close * 100
+    first_1m_return = (close_930 - spy_open) / spy_open * 100
+    net_movement = (close_934 - spy_open) / spy_open * 100
+
+    opening_range_high = float(window["high"].max())
+    opening_range_low = float(window["low"].min())
+
+    if net_movement > 0:
+        breakout_direction = "UP"
+    elif net_movement < 0:
+        breakout_direction = "DOWN"
+    else:
+        breakout_direction = "NONE"
+
+    volatility = float((window["high"] - window["low"]).mean())
+    volume = int(window["volume"].sum())
+    avg_vol = float(np.mean(vol_history)) if vol_history else float(volume)
+    volume_ratio = volume / avg_vol if avg_vol > 0 else 1.0
+
+    return {
+        "date": trade_date,
+        "spy_open": spy_open,
+        "previous_close": prev_close,
+        "gap_pct": round(gap_pct, 4),
+        "first_1m_return": round(first_1m_return, 4),
+        "net_movement": round(net_movement, 4),
+        "opening_range_high": opening_range_high,
+        "opening_range_low": opening_range_low,
+        "opening_range_width": round(opening_range_high - opening_range_low, 4),
+        "breakout_direction": breakout_direction,
+        "volatility": round(volatility, 4),
+        "volume": volume,
+        "volume_ratio": round(volume_ratio, 4),
+    }
