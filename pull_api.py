@@ -3,6 +3,7 @@ import os
 from collections import deque
 from datetime import datetime
 from typing import Deque, Iterator, List, Optional
+from strategy import label_trade
 
 import boto3
 import numpy as np
@@ -258,7 +259,7 @@ def build_dataset(
 
             features = compute_features(trade_date, window, prev_close, vol_history)
             if features:
-                features["label"] = label_row(features)
+                features["label"] = label_trade(features)
                 feature_rows.append(features)
                 vol_history.append(features["volume"])
                 print(f"OK  gap={features['gap_pct']:+.2f}%  dir={features['breakout_direction']}  net={features['net_movement']:+.2f}%")
