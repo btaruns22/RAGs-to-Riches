@@ -1,38 +1,52 @@
-# Breakout Strategy
-# Labels a 9:30–9:34 SPY opening window as TAKE or PASS.
-#
-# Ground truth: close of the 5-minute candle (09:34 close = net_movement basis).
-# A setup is TAKE if there is a clear directional move, confirmed by above-average
-# volume, and a meaningful price move by the end of the window.
-#
-# To add a new strategy, create a new file (e.g. mean_reversion_strategy.py)
-# following the same interface: a module-level THRESHOLDS dict and a label(row) function.
+"""Momentum breakout strategy used for deterministic labeling."""
 
-# TODO: finalize these thresholds based on the defined strategy rules.
 THRESHOLDS = {
-    "min_volume_ratio": 1.2,   # opening volume must be at least 20% above 20-day avg
-    "min_net_movement": 0.2,   # price must move at least 0.2% across the 5-min window
+    "breakout_direction": "UP",
+    "min_net_movement": 0.25,
+    "min_volume_ratio": 1.2,
+    "min_opening_range_width": 0.3,
+    "min_first_1m_return": 0.0,
 }
+
+RULE_DOCUMENT = """
+Momentum Breakout Strategy:
+
+TAKE if:
+- breakout_direction = UP
+- net_movement >= 0.25%
+- volume_ratio >= 1.2
+- opening_range_width >= 0.3
+- first_1m_return >= 0
+
+Otherwise PASS.
+""".strip()
 
 
 def label(row: dict) -> str:
-    """
-    Apply breakout strategy rules to a feature row.
-
-    Parameters
-    ----------
-    row : dict
-        One row from spy_open_features.csv. Must contain:
-        breakout_direction, volume_ratio, net_movement.
-
-    Returns
-    -------
-    "TAKE" or "PASS"
-    """
-    if row["breakout_direction"] == "NONE":
+    """Apply the momentum breakout strategy to one engineered feature row."""
+    if row["breakout_direction"] != THRESHOLDS["breakout_direction"]:
         return "PASS"
     if row["volume_ratio"] < THRESHOLDS["min_volume_ratio"]:
         return "PASS"
-    if abs(row["net_movement"]) < THRESHOLDS["min_net_movement"]:
+    if row["net_movement"] < THRESHOLDS["min_net_movement"]:
+        return "PASS"
+    if row["opening_range_width"] < THRESHOLDS["min_opening_range_width"]:
+        return "PASS"
+    if row["first_1m_return"] < THRESHOLDS["min_first_1m_return"]:
         return "PASS"
     return "TAKE"
+
+
+def format_for_retrieval(row: dict) -> str:
+    """Format a labeled row as a compact retrieval document."""
+    return (
+        f"Date: {row['date']}\n"
+        f"Gap %: {row['gap_pct']:.2f}\n"
+        f"First 1m Return: {row['first_1m_return']:.2f}\n"
+        f"Net Movement: {row['net_movement']:.2f}\n"
+        f"Opening Range Width: {row['opening_range_width']:.2f}\n"
+        f"Volatility: {row['volatility']:.2f}\n"
+        f"Volume Ratio: {row['volume_ratio']:.2f}\n"
+        f"Breakout Direction: {row['breakout_direction']}\n"
+        f"Decision: {row.get('label', 'UNKNOWN')}\n"
+    )

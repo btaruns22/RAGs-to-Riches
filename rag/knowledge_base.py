@@ -4,11 +4,14 @@ from typing import List
 
 import pandas as pd
 
+from trading_strategies.breakout_strategy import RULE_DOCUMENT
+
 
 DEFAULT_RULES = [
     "A breakout setup needs a directional move, not a flat open.",
     "Higher opening volume strengthens conviction in the move.",
     "A small net movement is less reliable than a clear 5-minute move.",
+    RULE_DOCUMENT,
 ]
 
 
