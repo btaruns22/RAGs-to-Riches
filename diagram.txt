@@ -1,0 +1,36 @@
+Massive Flat Files (S3)
+        |
+        v
+services/s3_client.py
+        |
+        v
+pipeline/features.py
+- load SPY day
+- extract 09:30–09:34
+- compute features
+        |
+        v
+pipeline/dataset.py
+- build spy_open_features.csv
+- build spy_open_raw_minutes.csv
+- add deterministic label
+        |
+        v
+trading_strategies/breakout_strategy.py
+- ground-truth TAKE/PASS rules
+        |
+        +----------------------+
+        |                      |
+        v                      v
+llm/baseline.py          llm/rag.py
+- feature row only       - feature row
+                         - retrieved rules
+                         - retrieved examples
+        |                      |
+        v                      v
+prompts/prompt_utils.py   prompts/rag_prompt.py
+        |                      |
+        +-----------> LLM <----+
+                         |
+                         v
+              compare output vs ground truth

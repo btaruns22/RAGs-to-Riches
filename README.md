@@ -32,19 +32,52 @@ Rather than predicting markets, this project focuses on **decision validation** 
 ## Project Structure
 
 ### 1. Data Pipeline
-SPY 1-minute bars are pulled directly from [Massive](https://massive.com) via their S3-compatible flat file endpoint (`us_stocks_sip/minute_aggs_v1/`). The pipeline is implemented in `pull_api.py` and handles the full flow end-to-end:
+SPY 1-minute bars are pulled directly from [Massive](https://massive.com) via their S3-compatible flat file endpoint (`us_stocks_sip/minute_aggs_v1/`). The current codebase is organized into small modules with a single entry point in `main.py`.
 
-- Scans S3 to discover all available trading dates in the requested range
-- Downloads each daily file, extracts only SPY rows
-- Filters to the 9:30–9:34 AM ET window (5 one-minute bars per day)
-- Engineers all structured features
-- Applies deterministic labeling rules
-- Saves two output files: `spy_open_raw_minutes.csv` and `spy_open_features.csv`
+Current package layout:
+
+```text
+main.py
+services/
+  s3_client.py
+pipeline/
+  features.py
+  dataset.py
+trading_strategies/
+  breakout_strategy.py
+prompts/
+  prompt_utils.py
+  rag_prompt.py
+rag/
+  knowledge_base.py
+  retriever.py
+llm/
+  baseline.py
+  rag.py
+```
+
+Pipeline responsibilities:
+
+- `services/s3_client.py`
+  - connects to Massive's S3-compatible endpoint
+  - lists accessible flat files and streams daily minute aggregate files
+- `pipeline/features.py`
+  - extracts SPY rows from each file
+  - filters to the `09:30` through `09:34` ET opening window
+  - computes the agreed feature schema
+- `pipeline/dataset.py`
+  - loops over trading dates
+  - builds `spy_open_raw_minutes.csv` and `spy_open_features.csv`
+  - applies deterministic labels via `trading_strategies/breakout_strategy.py`
+- `prompts/`
+  - contains the baseline prompt formatter and future prompt files from the prompting workstream
+- `rag/` and `llm/`
+  - contain the scaffold for retrieval-augmented prompting and baseline-vs-RAG evaluation
 
 To generate the dataset, run:
 
 ```bash
-python pull_api.py
+python main.py
 ```
 
 Credentials (`MASSIVE_ACCESS_KEY`, `MASSIVE_SECRET_KEY`, `MASSIVE_S3_ENDPOINT`, `MASSIVE_S3_BUCKET`) must be set in a `.env` file. The `.env` file is gitignored and should not be committed.
@@ -99,14 +132,16 @@ One row per trading day. Serves as both the RAG retrieval knowledge base and the
 - `spy_open_features.csv` is the **memory** — the RAG system retrieves similar historical setups from this file to inform the LLM's decision, and the `label` column is what the LLM's decision is evaluated against
 
 ### 3. Baseline Model
-- LLM receives only structured features
-- Outputs decision + explanation
+- Implemented as a separate prompt path in `llm/baseline.py`
+- LLM receives only the current feature row formatted by `prompts/prompt_utils.py`
+- Outputs decision + explanation without retrieved context
 
 ### 4. RAG System
+- Scaffolded in `rag/`, `prompts/rag_prompt.py`, and `llm/rag.py`
 - Retrieve:
   - relevant strategy rules
-  - similar historical examples
-- Augment LLM prompt with retrieved context
+  - similar historical examples from `spy_open_features.csv`
+- Augment the baseline prompt with retrieved context before LLM inference
 
 ### 5. Evaluation
 Compare baseline vs RAG system using:

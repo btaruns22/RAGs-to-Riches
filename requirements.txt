@@ -3,6 +3,7 @@ numpy
 boto3
 massive
 python-dotenv
+requests
 openai
 chromadb
 langchain
