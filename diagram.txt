@@ -1,3 +1,6 @@
+DATA BUILD STAGE
+================
+
 Massive Flat Files (S3)
         |
         v
@@ -5,32 +8,127 @@ services/s3_client.py
         |
         v
 pipeline/features.py
-- load SPY day
-- extract 09:30–09:34
-- compute features
+- load daily SPY minute bars
+- convert timestamps to ET
+- keep only 09:30 to 09:34
+- compute per-day features
         |
         v
 pipeline/dataset.py
-- build spy_open_features.csv
 - build spy_open_raw_minutes.csv
-- add deterministic label
+- build spy_open_features.csv
+- apply deterministic label
         |
         v
 trading_strategies/breakout_strategy.py
-- ground-truth TAKE/PASS rules
+- momentum breakout rules
+- produces ground-truth label: TAKE or PASS
+
+
+OUTPUTS AFTER main.py
+=====================
+
+1. spy_open_raw_minutes.csv
+- raw 1-minute opening bars
+- 5 rows per trading day
+- mainly for inspection / raw signal record
+
+2. spy_open_features.csv
+- one engineered row per trading day
+- contains the ground-truth label
+- used as retrieval memory and evaluation ground truth
+
+
+BASELINE FLOW
+=============
+
+One date from spy_open_raw_minutes.csv
         |
-        +----------------------+
-        |                      |
-        v                      v
-llm/baseline.py          llm/rag.py
-- feature row only       - feature row
-                         - retrieved rules
-                         - retrieved examples
-        |                      |
-        v                      v
-prompts/prompt_utils.py   prompts/rag_prompt.py
-        |                      |
-        +-----------> LLM <----+
-                         |
-                         v
-              compare output vs ground truth
+        v
+5 raw bars for that date
+        |
+        v
+llm/baseline.py
+- take one day's opening sequence
+- no retrieval
+        |
+        v
+prompts/prompt_utils.py
+- convert the 5 raw bars into prompt text
+        |
+        v
+LLM
+        |
+        v
+baseline_results.csv
+        |
+        v
+evaluation/evaluation.py
+- compare predicted_label vs true_label
+
+
+RAG FLOW
+========
+
+One date from spy_open_raw_minutes.csv
+        |
+        v
+prompts/prompt_utils.py
+- format the same 5 raw bars
+        |
+        +------------------------------+
+        |                              |
+        v                              v
+rag/knowledge_base.py            spy_open_features.csv
+- load strategy rules            - historical labeled examples
+        |                              |
+        +--------------+---------------+
+                       |
+                       v
+rag/retriever.py
+- retrieve relevant rules
+- retrieve similar historical examples
+- exclude the current date
+                       |
+                       v
+prompts/rag_prompt.py
+- combine:
+  - current raw 5-bar sequence
+  - retrieved rules
+  - retrieved historical examples
+  - retrieved historical labels
+                       |
+                       v
+llm/rag.py
+                       |
+                       v
+LLM
+                       |
+                       v
+rag_results.csv
+                       |
+                       v
+evaluation/evaluation.py
+- compare predicted_label vs true_label in spy_open_features.csv
+
+
+KEY IDEA
+========
+
+main.py only builds the datasets.
+
+Ground truth comes from:
+- trading_strategies/breakout_strategy.py
+- stored in spy_open_features.csv as label
+
+RAG happens after the dataset exists.
+
+RAG does NOT create the label.
+RAG uses:
+- one date's raw 5-bar opening sequence
+- strategy rules
+- similar historical rows from other dates
+- historical labels for those other dates
+to help the LLM predict TAKE or PASS.
+
+The current date must be excluded from retrieval.
