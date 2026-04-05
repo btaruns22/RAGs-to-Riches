@@ -2,37 +2,43 @@
 import pandas as pd
 from openai import OpenAI
 
-from prompts.prompt_utils import SYSTEM_PROMPT, features_to_text
-from prompts.prompt_utils import parse_llm_output
+from prompts.prompt_utils import SYSTEM_PROMPT, parse_llm_output, raw_minutes_to_text
 
 MODEL = "gpt-4.1-mini"
 
 
-def build_baseline_messages(row: dict) -> list[dict]:
+def build_baseline_messages(raw_day: pd.DataFrame) -> list[dict]:
     """Return a simple system/user message pair for the baseline model."""
     return [
         {"role": "system", "content": SYSTEM_PROMPT},
-        {"role": "user", "content": features_to_text(row)},
+        {"role": "user", "content": raw_minutes_to_text(raw_day)},
     ]
 
 
 def run_baseline(
-    input_csv: str = "spy_open_features.csv",
+    raw_csv: str = "spy_open_raw_minutes.csv",
+    features_csv: str = "spy_open_features.csv",
     output_csv: str = "baseline_results.csv",
     sample_size: int | None = None,
     model: str = MODEL,
 ) -> pd.DataFrame:
-    """Run the baseline model on the engineered dataset and save predictions."""
+    """Run the baseline model on raw 5-bar sequences and save predictions."""
     client = OpenAI()
-    df = pd.read_csv(input_csv)
+    raw_df = pd.read_csv(raw_csv)
+    features_df = pd.read_csv(features_csv)
 
     if sample_size:
-        df = df.sample(sample_size, random_state=42)
+        features_df = features_df.sample(sample_size, random_state=42)
 
     results = []
-    for i, row in df.iterrows():
-        print(f"[{i + 1}/{len(df)}] Processing {row['date']}")
-        messages = build_baseline_messages(row)
+    for i, row in features_df.iterrows():
+        print(f"[{i + 1}/{len(features_df)}] Processing {row['date']}")
+        raw_day = raw_df[raw_df["date"] == row["date"]].copy()
+        if raw_day.empty:
+            print(f"Skipping {row['date']} - no raw bars found")
+            continue
+
+        messages = build_baseline_messages(raw_day)
 
         response = client.chat.completions.create(
             model=model,
