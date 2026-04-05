@@ -15,8 +15,8 @@ Rather than predicting markets, this project focuses on **decision validation** 
 ## System Design
 
 ### Input
-- Structured features derived from SPY 1-minute candles
-- Time window: **9:30–9:35 AM (first 5 minutes of market open)**
+- A single trading day's SPY opening sequence from `spy_open_raw_minutes.csv`
+- Time window: **9:30–9:34 AM ET** (5 one-minute candles)
 
 ### Context (RAG)
 - Strategy rules (formalized trading logic)
@@ -82,6 +82,44 @@ python main.py
 
 Credentials (`MASSIVE_ACCESS_KEY`, `MASSIVE_SECRET_KEY`, `MASSIVE_S3_ENDPOINT`, `MASSIVE_S3_BUCKET`) must be set in a `.env` file. The `.env` file is gitignored and should not be committed.
 
+### 1.1 Run Order
+
+Use the project in this order:
+
+```bash
+python main.py
+python -m llm.baseline
+python -m llm.rag
+python -m evaluation.evaluation
+```
+
+What each command does:
+
+1. `python main.py`
+- pulls historical SPY minute data from Massive flat files
+- filters each day to the `09:30` through `09:34` opening window
+- builds:
+  - `spy_open_raw_minutes.csv`
+  - `spy_open_features.csv`
+- applies deterministic ground-truth labels using `trading_strategies/breakout_strategy.py`
+
+2. `python -m llm.baseline`
+- loads one date at a time from `spy_open_raw_minutes.csv`
+- sends only that raw 5-bar opening sequence to the LLM
+- saves model predictions to `baseline_results.csv`
+
+3. `python -m llm.rag`
+- loads the same one-date raw 5-bar opening sequence from `spy_open_raw_minutes.csv`
+- retrieves strategy rules and similar historical examples from `spy_open_features.csv`
+- excludes the current date from retrieval
+- saves model predictions to `rag_results.csv`
+
+4. `python -m evaluation.evaluation`
+- compares `baseline_results.csv` and `rag_results.csv`
+- joins both against the ground truth from `spy_open_features.csv`
+- prints side-by-side summary metrics
+- saves merged comparison output to `comparison_results.csv`
+
 ### 2. Datasets
 
 The pipeline produces two output files covering approximately 2 years of history.
@@ -90,7 +128,7 @@ The pipeline produces two output files covering approximately 2 years of history
 
 #### `spy_open_raw_minutes.csv` — Raw minute bars (LLM input)
 
-5 rows per trading day — one per minute bar. This is what the LLM observes as the opening window unfolds.
+5 rows per trading day — one per minute bar. This is the primary model input for both the baseline and RAG experiments.
 
 | column | description |
 |--------|-------------|
@@ -106,7 +144,7 @@ The pipeline produces two output files covering approximately 2 years of history
 
 #### `spy_open_features.csv` — Engineered features + ground truth (RAG knowledge base)
 
-One row per trading day. Serves as both the RAG retrieval knowledge base and the ground truth for evaluation.
+One row per trading day. Serves as the retrieval memory and the ground truth for evaluation.
 
 | column | description |
 |--------|-------------|
@@ -125,15 +163,17 @@ One row per trading day. Serves as both the RAG retrieval knowledge base and the
 | `volume_ratio` | opening-window volume divided by trailing 20-day average opening-window volume |
 | `label` | ground truth: `TAKE` or `PASS` |
 
-**Ground truth logic:** `label` is derived from the close of the 5-minute candle (the `09:34` close). A setup is labeled `TAKE` if there is a clear directional breakout (`breakout_direction` is not `NONE`), confirmed by above-average volume (`volume_ratio >= 1.2`), and a meaningful price move (`|net_movement| >= 0.2%`). The exact thresholds are placeholders — the RAG & Evaluation Lead is responsible for finalizing them before the dataset is regenerated.
+**Ground truth logic:** `label` is created deterministically by `trading_strategies/breakout_strategy.py`. The current strategy is a momentum breakout rule set: `TAKE` requires `breakout_direction = UP`, `net_movement >= 0.25`, `volume_ratio >= 1.2`, `opening_range_width >= 0.3`, and `first_1m_return >= 0`. Otherwise the row is labeled `PASS`.
 
 **How the two files work together:**
-- `spy_open_raw_minutes.csv` is the **signal** — the LLM observes these bars minute-by-minute and tries to identify a valid setup as early as possible (ideally before bar 5)
-- `spy_open_features.csv` is the **memory** — the RAG system retrieves similar historical setups from this file to inform the LLM's decision, and the `label` column is what the LLM's decision is evaluated against
+- `spy_open_raw_minutes.csv` is the **query input** — the LLM sees one date's 5-bar opening sequence and must decide `TAKE TRADE` or `PASS TRADE`
+- `spy_open_features.csv` is the **memory and answer key** — the RAG system retrieves similar historical setups from this file, and the `label` column is the ground truth used for evaluation
+- Leakage rule: the current test date must never be retrieved as an example for itself
+- Baseline and RAG prompts must never include the current row's `label`
 
 ### 3. Baseline Model
 - Implemented as a separate prompt path in `llm/baseline.py`
-- LLM receives only the current feature row formatted by `prompts/prompt_utils.py`
+- LLM should receive only one date's 5 raw bars from `spy_open_raw_minutes.csv`
 - Outputs decision + explanation without retrieved context
 
 ### 4. RAG System
@@ -141,9 +181,30 @@ One row per trading day. Serves as both the RAG retrieval knowledge base and the
 - Retrieve:
   - relevant strategy rules
   - similar historical examples from `spy_open_features.csv`
-- Augment the baseline prompt with retrieved context before LLM inference
+- Retrieved examples may include their historical labels because this design is testing case-based reasoning
+- The current date must be excluded from retrieval to avoid leakage
+- Augment the raw-minute baseline prompt with retrieved context before LLM inference
 
-### 5. Evaluation
+### 5. Prompt Pipeline
+
+Target prompt design:
+
+1. Baseline prompt
+- Input: one date from `spy_open_raw_minutes.csv`
+- Contains only the 5 one-minute bars for that day
+- Asks the LLM to decide `TAKE TRADE` or `PASS TRADE`
+- No retrieved rules or examples
+
+2. RAG prompt
+- Input: the same one-date 5-bar sequence from `spy_open_raw_minutes.csv`
+- Retrieved context:
+  - strategy rules
+  - similar historical rows from `spy_open_features.csv`
+  - historical labels for those retrieved rows may be included
+- Exclude the current date from retrieval
+- Do not include the current date's ground-truth label in the prompt
+
+### 6. Evaluation
 Compare baseline vs RAG system using:
 - **Accuracy** (correct decisions vs ground truth)
 - **Consistency** (stability across multiple runs)
