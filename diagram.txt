@@ -3,14 +3,23 @@ DATA BUILD STAGE
 
 Massive Flat Files (S3)
         |
-        v
+        +------------------------------+
+        |                              |
+        v                              v
+us_stocks_sip/minute_aggs_v1    us_indices/minute_aggs_v1
+        |                              |
+        +--------------+---------------+
+                       |
+                       v
 services/s3_client.py
-        |
-        v
+                       |
+                       v
 pipeline/features.py
 - load daily SPY minute bars
+- load daily VIX minute bars (`I:VIX`)
 - convert timestamps to ET
-- keep only 09:30 to 09:34
+- keep SPY setup window at 09:30 to 09:34
+- store `vix_at_open` from the VIX 09:30 bar
 - compute per-day features
         |
         v
@@ -36,6 +45,7 @@ OUTPUTS AFTER main.py
 2. spy_open_features.csv
 - one engineered row per trading day
 - contains the ground-truth label
+- contains `vix_at_open`
 - used as retrieval memory and evaluation ground truth
 
 
@@ -76,19 +86,24 @@ One date from spy_open_raw_minutes.csv
 prompts/prompt_utils.py
 - format the same 5 raw bars
         |
-        +------------------------------+
-        |                              |
-        v                              v
-rag/knowledge_base.py            spy_open_features.csv
-- load strategy rules            - historical labeled examples
-        |                              |
-        +--------------+---------------+
+        +---------------------------------------------+
+        |                                             |
+        v                                             v
+rag/knowledge_base.py                           spy_open_features.csv
+- load strategy rules                           - historical labeled examples
+        |                                             |
+        +--------------+------------------------------+
                        |
                        v
-rag/retriever.py
-- retrieve relevant rules
-- retrieve similar historical examples
-- exclude the current date
+        choose retrieval mode in llm/rag.py
+                       |
+             +---------+---------+
+             |                   |
+             v                   v
+rag/retriever.py          rag/vector_store.py
+- manual feature          - local Chroma index
+  distance retrieval      - OpenRouter embeddings
+- exclude current date    - exclude current date
                        |
                        v
 prompts/rag_prompt.py
@@ -128,7 +143,9 @@ RAG uses:
 - one date's raw 5-bar opening sequence
 - strategy rules
 - similar historical rows from other dates
+- VIX regime context via `vix_at_open`
 - historical labels for those other dates
 to help the LLM predict TAKE or PASS.
 
 The current date must be excluded from retrieval.
+Chroma stays local; embeddings come from OpenRouter.
