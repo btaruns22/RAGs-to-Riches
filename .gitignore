@@ -3,6 +3,7 @@ __pycache__/
 *.pyc
 .DS_Store
 .env
+.chroma/
 
 # Generated data files — share via Google Drive, not git
 *.csv
