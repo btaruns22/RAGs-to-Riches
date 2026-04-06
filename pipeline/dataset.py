@@ -9,8 +9,10 @@ from pipeline.features import (
     compute_features,
     extract_open_window,
     get_regular_close,
+    get_vix_at_open,
     list_trading_dates,
     load_spy_day,
+    load_vix_day,
 )
 
 
@@ -34,6 +36,7 @@ def build_dataset(
         print(f"[{i:3d}/{len(dates)}] {trade_date}", end="  ")
         try:
             spy_day = load_spy_day(trade_date)
+            vix_day = load_vix_day(trade_date)
 
             if spy_day.empty:
                 print("no SPY data - skip")
@@ -52,6 +55,8 @@ def build_dataset(
                 prev_close = day_close
                 continue
 
+            vix_at_open = get_vix_at_open(vix_day)
+
             for _, bar in window.iterrows():
                 raw_rows.append(
                     {
@@ -65,7 +70,13 @@ def build_dataset(
                     }
                 )
 
-            features = compute_features(trade_date, window, prev_close, vol_history)
+            features = compute_features(
+                trade_date,
+                window,
+                prev_close,
+                vol_history,
+                vix_at_open=vix_at_open,
+            )
             if features:
                 features["label"] = strategy.label(features)
                 feature_rows.append(features)
@@ -73,7 +84,8 @@ def build_dataset(
                 print(
                     f"OK gap={features['gap_pct']:+.2f}% "
                     f"dir={features['breakout_direction']} "
-                    f"net={features['net_movement']:+.2f}%"
+                    f"net={features['net_movement']:+.2f}% "
+                    f"vix={features['vix_at_open'] if features['vix_at_open'] is not None else 'NA'}"
                 )
 
             prev_close = day_close

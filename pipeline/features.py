@@ -12,6 +12,8 @@ ET = ZoneInfo("America/New_York")
 
 _OPEN_START = 9 * 60 + 30
 _OPEN_END = 9 * 60 + 34
+_STOCKS_PREFIX = "us_stocks_sip/minute_aggs_v1"
+_INDICES_PREFIX = "us_indices/minute_aggs_v1"
 
 
 def list_trading_dates(start_date: str, end_date: str) -> List[str]:
@@ -23,7 +25,7 @@ def list_trading_dates(start_date: str, end_date: str) -> List[str]:
     year, month = start_dt.year, start_dt.month
 
     while (year, month) <= (end_dt.year, end_dt.month):
-        prefix = f"us_stocks_sip/minute_aggs_v1/{year}/{month:02d}/"
+        prefix = f"{_STOCKS_PREFIX}/{year}/{month:02d}/"
         for key in list_available_keys(prefix=prefix, limit=31):
             date_str = key.split("/")[-1].replace(".csv.gz", "")
             if start_date <= date_str <= end_date:
@@ -38,10 +40,27 @@ def list_trading_dates(start_date: str, end_date: str) -> List[str]:
 def load_spy_day(trade_date: str) -> pd.DataFrame:
     """Load all SPY minute bars for a trading day with ET timestamps attached."""
     frames = []
-    for chunk in read_daily_file(trade_date):
+    for chunk in read_daily_file(trade_date, dataset_prefix=_STOCKS_PREFIX):
         spy = chunk[chunk["ticker"] == "SPY"]
         if not spy.empty:
             frames.append(spy.copy())
+
+    if not frames:
+        return pd.DataFrame()
+
+    df = pd.concat(frames, ignore_index=True)
+    df["ts"] = pd.to_datetime(df["window_start"], unit="ns", utc=True).dt.tz_convert(ET)
+    df["minute"] = df["ts"].dt.hour * 60 + df["ts"].dt.minute
+    return df.sort_values("ts").reset_index(drop=True)
+
+
+def load_vix_day(trade_date: str) -> pd.DataFrame:
+    """Load all VIX minute bars for a trading day with ET timestamps attached."""
+    frames = []
+    for chunk in read_daily_file(trade_date, dataset_prefix=_INDICES_PREFIX):
+        vix = chunk[chunk["ticker"] == "I:VIX"]
+        if not vix.empty:
+            frames.append(vix.copy())
 
     if not frames:
         return pd.DataFrame()
@@ -66,11 +85,23 @@ def get_regular_close(spy_day: pd.DataFrame) -> Optional[float]:
     return float(regular.iloc[-1]["close"])
 
 
+def get_vix_at_open(vix_day: pd.DataFrame) -> Optional[float]:
+    """Return the VIX open price from the 09:30 minute bar."""
+    if vix_day.empty:
+        return None
+
+    bar_930 = vix_day[vix_day["minute"] == _OPEN_START]
+    if bar_930.empty:
+        return None
+    return float(bar_930.iloc[0]["open"])
+
+
 def compute_features(
     trade_date: str,
     window: pd.DataFrame,
     prev_close: float,
     vol_history: Deque,
+    vix_at_open: Optional[float] = None,
 ) -> Optional[dict]:
     """Compute the agreed feature schema for one trading day's opening window."""
     bar_930 = window[window["minute"] == _OPEN_START]
@@ -116,4 +147,5 @@ def compute_features(
         "volatility": round(volatility, 4),
         "volume": volume,
         "volume_ratio": round(volume_ratio, 4),
+        "vix_at_open": round(vix_at_open, 4) if vix_at_open is not None else None,
     }
