@@ -34,10 +34,13 @@ def build_s3_client():
     )
 
 
-def build_daily_object_key(trade_date: str) -> str:
+def build_daily_object_key(
+    trade_date: str,
+    dataset_prefix: str = "us_stocks_sip/minute_aggs_v1",
+) -> str:
     """Return the S3 key for a given trade date's minute aggregate flat file."""
     year, month, _ = trade_date.split("-")
-    return f"us_stocks_sip/minute_aggs_v1/{year}/{month}/{trade_date}.csv.gz"
+    return f"{dataset_prefix}/{year}/{month}/{trade_date}.csv.gz"
 
 
 def list_available_keys(prefix: str, limit: int = 31) -> List[str]:
@@ -57,11 +60,12 @@ def list_available_keys(prefix: str, limit: int = 31) -> List[str]:
 
 def read_daily_file(
     trade_date: str,
+    dataset_prefix: str = "us_stocks_sip/minute_aggs_v1",
     chunksize: int = 100_000,
 ) -> Iterator[pd.DataFrame]:
     """Download and stream a daily minute-aggregate flat file as chunked DataFrames."""
     bucket = require_env("MASSIVE_S3_BUCKET")
-    object_key = build_daily_object_key(trade_date)
+    object_key = build_daily_object_key(trade_date, dataset_prefix=dataset_prefix)
     s3_client = build_s3_client()
 
     try:
