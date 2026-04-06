@@ -6,22 +6,41 @@ from prompts.rag_prompt import build_rag_user_prompt
 from prompts.prompt_utils import SYSTEM_PROMPT, parse_llm_output
 from rag.knowledge_base import load_examples, load_rules
 from rag.retriever import retrieve_relevant_rules, retrieve_similar_examples
+from rag.vector_store import DEFAULT_VECTOR_DIR, ensure_vector_index, query_similar_examples
 
 MODEL = "gpt-4.1-mini"
+DEFAULT_RETRIEVAL_MODE = "manual"
 
 
 def build_rag_messages(
     raw_day: pd.DataFrame,
     feature_row: pd.Series,
     dataset_path: str = "spy_open_features.csv",
+    raw_csv_path: str = "spy_open_raw_minutes.csv",
     rules_path: str | None = None,
+    retrieval_mode: str = DEFAULT_RETRIEVAL_MODE,
     top_k: int = 3,
+    vector_dir: str = DEFAULT_VECTOR_DIR,
 ) -> list[dict]:
     """Return system/user messages augmented with retrieved context."""
     examples = load_examples(dataset_path)
     rules = load_rules(rules_path)
 
-    similar_examples = retrieve_similar_examples(row=feature_row, examples=examples, top_k=top_k)
+    if retrieval_mode == "vector":
+        similar_examples = query_similar_examples(
+            row=feature_row,
+            raw_day=raw_day,
+            examples=examples,
+            dataset_path=dataset_path,
+            raw_csv_path=raw_csv_path,
+            top_k=top_k,
+            persist_dir=vector_dir,
+        )
+    elif retrieval_mode == "manual":
+        similar_examples = retrieve_similar_examples(row=feature_row, examples=examples, top_k=top_k)
+    else:
+        raise ValueError(f"Unsupported retrieval_mode: {retrieval_mode}")
+
     relevant_rules = retrieve_relevant_rules(row=feature_row, rules=rules)
 
     return [
@@ -42,14 +61,23 @@ def run_rag(
     features_csv: str = "spy_open_features.csv",
     output_csv: str = "rag_results.csv",
     rules_path: str | None = None,
+    retrieval_mode: str = DEFAULT_RETRIEVAL_MODE,
     sample_size: int | None = None,
     top_k: int = 3,
     model: str = MODEL,
+    vector_dir: str = DEFAULT_VECTOR_DIR,
 ) -> pd.DataFrame:
     """Run the RAG model on raw 5-bar sequences and save predictions."""
     client = OpenAI()
     raw_df = pd.read_csv(raw_csv)
     features_df = pd.read_csv(features_csv)
+
+    if retrieval_mode == "vector":
+        ensure_vector_index(
+            dataset_path=features_csv,
+            raw_csv_path=raw_csv,
+            persist_dir=vector_dir,
+        )
 
     if sample_size:
         features_df = features_df.sample(sample_size, random_state=42)
@@ -66,8 +94,11 @@ def run_rag(
             raw_day=raw_day,
             feature_row=row,
             dataset_path=features_csv,
+            raw_csv_path=raw_csv,
             rules_path=rules_path,
+            retrieval_mode=retrieval_mode,
             top_k=top_k,
+            vector_dir=vector_dir,
         )
 
         response = client.chat.completions.create(
@@ -97,4 +128,4 @@ def run_rag(
 
 
 if __name__ == "__main__":
-    run_rag(sample_size=100)
+    run_rag(sample_size=100, retrieval_mode=DEFAULT_RETRIEVAL_MODE)
