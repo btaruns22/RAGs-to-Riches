@@ -32,7 +32,12 @@ Rather than predicting markets, this project focuses on **decision validation** 
 ## Project Structure
 
 ### 1. Data Pipeline
-SPY 1-minute bars are pulled directly from [Massive](https://massive.com) via their S3-compatible flat file endpoint (`us_stocks_sip/minute_aggs_v1/`). The current codebase is organized into small modules with a single entry point in `main.py`.
+SPY 1-minute bars are pulled directly from [Massive](https://massive.com) via their S3-compatible flat file endpoint. The pipeline now uses two Massive minute-aggregate datasets:
+
+- `us_stocks_sip/minute_aggs_v1/` for SPY
+- `us_indices/minute_aggs_v1/` for VIX (`I:VIX`)
+
+The current codebase is organized into small modules with a single entry point in `main.py`.
 
 Current package layout:
 
@@ -51,6 +56,7 @@ prompts/
 rag/
   knowledge_base.py
   retriever.py
+  vector_store.py
 llm/
   baseline.py
   rag.py
@@ -61,10 +67,12 @@ Pipeline responsibilities:
 - `services/s3_client.py`
   - connects to Massive's S3-compatible endpoint
   - lists accessible flat files and streams daily minute aggregate files
+  - supports both stock and index minute datasets
 - `pipeline/features.py`
   - extracts SPY rows from each file
   - filters to the `09:30` through `09:34` ET opening window
   - computes the agreed feature schema
+  - loads `I:VIX` from the indices dataset and stores the `09:30` open as `vix_at_open`
 - `pipeline/dataset.py`
   - loops over trading dates
   - builds `spy_open_raw_minutes.csv` and `spy_open_features.csv`
@@ -88,8 +96,10 @@ Use the project in this order:
 
 ```bash
 python main.py
+python -m rag.vector_store
 python -m llm.baseline
-python -m llm.rag
+python -m llm.rag_manual
+python -m llm.rag_vector
 python -m evaluation.evaluation
 ```
 
@@ -97,6 +107,7 @@ What each command does:
 
 1. `python main.py`
 - pulls historical SPY minute data from Massive flat files
+- pulls historical VIX index data from Massive indices flat files
 - filters each day to the `09:30` through `09:34` opening window
 - builds:
   - `spy_open_raw_minutes.csv`
@@ -108,14 +119,27 @@ What each command does:
 - sends only that raw 5-bar opening sequence to the LLM
 - saves model predictions to `baseline_results.csv`
 
-3. `python -m llm.rag`
+3. `python -m rag.vector_store`
+- builds or refreshes the local Chroma index from `spy_open_features.csv`
+- stores vectorized historical setups locally in `.chroma/`
+- uses OpenRouter embeddings, while keeping Chroma local on your machine
+
+4. `python -m llm.rag_manual`
 - loads the same one-date raw 5-bar opening sequence from `spy_open_raw_minutes.csv`
 - retrieves strategy rules and similar historical examples from `spy_open_features.csv`
 - excludes the current date from retrieval
-- saves model predictions to `rag_results.csv`
+- uses the hard-coded manual retriever in `rag/retriever.py`
+- saves model predictions to `rag_results_manual.csv`
 
-4. `python -m evaluation.evaluation`
-- compares `baseline_results.csv` and `rag_results.csv`
+5. `python -m llm.rag_vector`
+- loads the same one-date raw 5-bar opening sequence from `spy_open_raw_minutes.csv`
+- retrieves similar historical examples through the local Chroma index
+- uses OpenRouter embeddings with local Chroma storage
+- saves model predictions to `rag_results_vector.csv`
+
+6. `python -m evaluation.evaluation`
+- by default compares `baseline_results.csv` and `rag_results.csv`
+- if you use the wrappers, either rename the selected RAG output to `rag_results.csv` or call the evaluation helper on the specific files you want to compare
 - joins both against the ground truth from `spy_open_features.csv`
 - prints side-by-side summary metrics
 - saves merged comparison output to `comparison_results.csv`
@@ -161,6 +185,7 @@ One row per trading day. Serves as the retrieval memory and the ground truth for
 | `volatility` | average intrabar range across the five candles |
 | `volume` | total volume from `09:30` through `09:34` |
 | `volume_ratio` | opening-window volume divided by trailing 20-day average opening-window volume |
+| `vix_at_open` | VIX open price from the `09:30` minute bar using `I:VIX` from the indices dataset |
 | `label` | ground truth: `TAKE` or `PASS` |
 
 **Ground truth logic:** `label` is created deterministically by `trading_strategies/breakout_strategy.py`. The current strategy is a momentum breakout rule set: `TAKE` requires `breakout_direction = UP`, `net_movement >= 0.25`, `volume_ratio >= 1.2`, `opening_range_width >= 0.3`, and `first_1m_return >= 0`. Otherwise the row is labeled `PASS`.
@@ -168,6 +193,7 @@ One row per trading day. Serves as the retrieval memory and the ground truth for
 **How the two files work together:**
 - `spy_open_raw_minutes.csv` is the **query input** — the LLM sees one date's 5-bar opening sequence and must decide `TAKE TRADE` or `PASS TRADE`
 - `spy_open_features.csv` is the **memory and answer key** — the RAG system retrieves similar historical setups from this file, and the `label` column is the ground truth used for evaluation
+- `vix_at_open` adds market-regime context from the VIX index to each historical setup
 - Leakage rule: the current test date must never be retrieved as an example for itself
 - Baseline and RAG prompts must never include the current row's `label`
 
@@ -184,6 +210,11 @@ One row per trading day. Serves as the retrieval memory and the ground truth for
 - Retrieved examples may include their historical labels because this design is testing case-based reasoning
 - The current date must be excluded from retrieval to avoid leakage
 - Augment the raw-minute baseline prompt with retrieved context before LLM inference
+- Two retrieval modes now exist:
+  - `manual`: hard-coded feature-distance retrieval in `rag/retriever.py`
+  - `vector`: local Chroma retrieval using OpenRouter embeddings in `rag/vector_store.py`
+- Vector retrieval documents include both the raw 5-bar setup and the engineered summary, including `vix_at_open`
+- Chroma is local and persistent; Pinecone is not used in the current implementation
 
 ### 5. Prompt Pipeline
 
@@ -216,8 +247,9 @@ Compare baseline vs RAG system using:
 - Python (pandas, numpy)
 - Massive S3 flat files (market data source)
 - LLM APIs (GPT-4o, Claude)
-- Vector Database (ChromaDB / Pinecone)
-- RAG Framework (LangChain / LlamaIndex)
+- Vector Database: local ChromaDB
+- Embeddings: OpenRouter `openai/text-embedding-3-small`
+- RAG retrieval: custom local pipeline, no LangChain or LlamaIndex required right now
 
 ## Local Setup
 
