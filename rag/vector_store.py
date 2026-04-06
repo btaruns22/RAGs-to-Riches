@@ -9,8 +9,8 @@ import pandas as pd
 from services.openrouter_embeddings import embed_texts, get_embedding_model
 from prompts.prompt_utils import raw_minutes_to_text
 
-DEFAULT_VECTOR_DIR = ".chroma"
-DEFAULT_COLLECTION_NAME = "spy_open_features"
+DEFAULT_VECTOR_DIR = "data/generated/chroma"
+DEFAULT_COLLECTION_NAME = "spy_open_setup_features"
 
 
 def _format_feature_summary(row: pd.Series, include_label: bool = True) -> str:
@@ -57,8 +57,8 @@ def _get_or_create_collection(persist_dir: str = DEFAULT_VECTOR_DIR):
 
 
 def build_vector_index(
-    dataset_path: str = "spy_open_features.csv",
-    raw_csv_path: str = "spy_open_raw_minutes.csv",
+    dataset_path: str = "data/generated/spy_open_setup_features.csv",
+    raw_csv_path: str = "data/generated/spy_open_setup_raw.csv",
     persist_dir: str = DEFAULT_VECTOR_DIR,
 ) -> int:
     """Build or refresh the local Chroma collection from the feature dataset."""
@@ -97,8 +97,8 @@ def build_vector_index(
 
 
 def ensure_vector_index(
-    dataset_path: str = "spy_open_features.csv",
-    raw_csv_path: str = "spy_open_raw_minutes.csv",
+    dataset_path: str = "data/generated/spy_open_setup_features.csv",
+    raw_csv_path: str = "data/generated/spy_open_setup_raw.csv",
     persist_dir: str = DEFAULT_VECTOR_DIR,
 ) -> None:
     """Build the vector store if the local collection does not exist yet."""
@@ -111,8 +111,8 @@ def query_similar_examples(
     row: pd.Series,
     raw_day: pd.DataFrame,
     examples: pd.DataFrame,
-    dataset_path: str = "spy_open_features.csv",
-    raw_csv_path: str = "spy_open_raw_minutes.csv",
+    dataset_path: str = "data/generated/spy_open_setup_features.csv",
+    raw_csv_path: str = "data/generated/spy_open_setup_raw.csv",
     top_k: int = 3,
     persist_dir: str = DEFAULT_VECTOR_DIR,
 ) -> pd.DataFrame:

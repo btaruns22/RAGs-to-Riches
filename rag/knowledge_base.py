@@ -28,7 +28,7 @@ def load_rules(rules_path: str | None = None) -> List[str]:
     return rules or DEFAULT_RULES
 
 
-def load_examples(dataset_path: str = "spy_open_features.csv") -> pd.DataFrame:
+def load_examples(dataset_path: str = "data/generated/spy_open_setup_features.csv") -> pd.DataFrame:
     """Load historical labeled examples from the engineered dataset."""
     path = Path(dataset_path)
     if not path.exists():

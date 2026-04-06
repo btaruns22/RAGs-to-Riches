@@ -19,8 +19,8 @@ from pipeline.features import (
 def build_dataset(
     start_date: str = "2024-03-01",
     end_date: str = "2025-03-14",
-    features_path: str = "spy_open_features.csv",
-    raw_path: str = "spy_open_raw_minutes.csv",
+    features_path: str = "data/generated/spy_open_setup_features.csv",
+    raw_path: str = "data/generated/spy_open_setup_raw.csv",
 ) -> pd.DataFrame:
     """Build raw and feature CSV outputs for the requested trading-date range."""
     print(f"Listing trading dates {start_date} to {end_date}...")

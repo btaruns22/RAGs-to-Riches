@@ -15,7 +15,7 @@ Rather than predicting markets, this project focuses on **decision validation** 
 ## System Design
 
 ### Input
-- A single trading day's SPY opening sequence from `spy_open_raw_minutes.csv`
+- A single trading day's SPY opening sequence from `data/generated/spy_open_setup_raw.csv`
 - Time window: **9:30–9:34 AM ET** (5 one-minute candles)
 
 ### Context (RAG)
@@ -75,8 +75,10 @@ Pipeline responsibilities:
   - loads `I:VIX` from the indices dataset and stores the `09:30` open as `vix_at_open`
 - `pipeline/dataset.py`
   - loops over trading dates
-  - builds `spy_open_raw_minutes.csv` and `spy_open_features.csv`
+  - builds `data/generated/spy_open_setup_raw.csv` and `data/generated/spy_open_setup_features.csv`
   - applies deterministic labels via `trading_strategies/breakout_strategy.py`
+
+Generated outputs are written under `data/generated/`.
 - `prompts/`
   - contains the baseline prompt formatter and future prompt files from the prompting workstream
 - `rag/` and `llm/`
@@ -110,39 +112,39 @@ What each command does:
 - pulls historical VIX index data from Massive indices flat files
 - filters each day to the `09:30` through `09:34` opening window
 - builds:
-  - `spy_open_raw_minutes.csv`
-  - `spy_open_features.csv`
+  - `data/generated/spy_open_setup_raw.csv`
+  - `data/generated/spy_open_setup_features.csv`
 - applies deterministic ground-truth labels using `trading_strategies/breakout_strategy.py`
 
 2. `python -m llm.baseline`
-- loads one date at a time from `spy_open_raw_minutes.csv`
+- loads one date at a time from `data/generated/spy_open_setup_raw.csv`
 - sends only that raw 5-bar opening sequence to the LLM
-- saves model predictions to `baseline_results.csv`
+- saves model predictions to `data/generated/baseline_results.csv`
 
 3. `python -m rag.vector_store`
-- builds or refreshes the local Chroma index from `spy_open_features.csv`
-- stores vectorized historical setups locally in `.chroma/`
+- builds or refreshes the local Chroma index from `data/generated/spy_open_setup_features.csv`
+- stores vectorized historical setups locally in `data/generated/chroma/`
 - uses OpenRouter embeddings, while keeping Chroma local on your machine
 
 4. `python -m llm.rag_manual`
-- loads the same one-date raw 5-bar opening sequence from `spy_open_raw_minutes.csv`
-- retrieves strategy rules and similar historical examples from `spy_open_features.csv`
+- loads the same one-date raw 5-bar opening sequence from `data/generated/spy_open_setup_raw.csv`
+- retrieves strategy rules and similar historical examples from `data/generated/spy_open_setup_features.csv`
 - excludes the current date from retrieval
 - uses the hard-coded manual retriever in `rag/retriever.py`
-- saves model predictions to `rag_results_manual.csv`
+- saves model predictions to `data/generated/rag_results_manual.csv`
 
 5. `python -m llm.rag_vector`
-- loads the same one-date raw 5-bar opening sequence from `spy_open_raw_minutes.csv`
+- loads the same one-date raw 5-bar opening sequence from `data/generated/spy_open_setup_raw.csv`
 - retrieves similar historical examples through the local Chroma index
 - uses OpenRouter embeddings with local Chroma storage
-- saves model predictions to `rag_results_vector.csv`
+- saves model predictions to `data/generated/rag_results_vector.csv`
 
 6. `python -m evaluation.evaluation`
-- by default compares `baseline_results.csv` and `rag_results.csv`
-- if you use the wrappers, either rename the selected RAG output to `rag_results.csv` or call the evaluation helper on the specific files you want to compare
-- joins both against the ground truth from `spy_open_features.csv`
+- by default compares `data/generated/baseline_results.csv` and `data/generated/rag_results.csv`
+- if you use the wrappers, either rename the selected RAG output to `data/generated/rag_results.csv` or call the evaluation helper on the specific files you want to compare
+- joins both against the ground truth from `data/generated/spy_open_setup_features.csv`
 - prints side-by-side summary metrics
-- saves merged comparison output to `comparison_results.csv`
+- saves merged comparison output to `data/generated/comparison_results.csv`
 
 ### 2. Datasets
 
@@ -150,7 +152,7 @@ The pipeline produces two output files covering approximately 2 years of history
 
 ---
 
-#### `spy_open_raw_minutes.csv` — Raw minute bars (LLM input)
+#### `data/generated/spy_open_setup_raw.csv` — Raw minute bars (LLM input)
 
 5 rows per trading day — one per minute bar. This is the primary model input for both the baseline and RAG experiments.
 
@@ -166,7 +168,7 @@ The pipeline produces two output files covering approximately 2 years of history
 
 ---
 
-#### `spy_open_features.csv` — Engineered features + ground truth (RAG knowledge base)
+#### `data/generated/spy_open_setup_features.csv` — Engineered features + ground truth (RAG knowledge base)
 
 One row per trading day. Serves as the retrieval memory and the ground truth for evaluation.
 
@@ -191,22 +193,22 @@ One row per trading day. Serves as the retrieval memory and the ground truth for
 **Ground truth logic:** `label` is created deterministically by `trading_strategies/breakout_strategy.py`. The current strategy is a momentum breakout rule set: `TAKE` requires `breakout_direction = UP`, `net_movement >= 0.25`, `volume_ratio >= 1.2`, `opening_range_width >= 0.3`, and `first_1m_return >= 0`. Otherwise the row is labeled `PASS`.
 
 **How the two files work together:**
-- `spy_open_raw_minutes.csv` is the **query input** — the LLM sees one date's 5-bar opening sequence and must decide `TAKE TRADE` or `PASS TRADE`
-- `spy_open_features.csv` is the **memory and answer key** — the RAG system retrieves similar historical setups from this file, and the `label` column is the ground truth used for evaluation
+- `data/generated/spy_open_setup_raw.csv` is the **query input** — the LLM sees one date's 5-bar opening sequence and must decide `TAKE TRADE` or `PASS TRADE`
+- `data/generated/spy_open_setup_features.csv` is the **memory and answer key** — the RAG system retrieves similar historical setups from this file, and the `label` column is the ground truth used for evaluation
 - `vix_at_open` adds market-regime context from the VIX index to each historical setup
 - Leakage rule: the current test date must never be retrieved as an example for itself
 - Baseline and RAG prompts must never include the current row's `label`
 
 ### 3. Baseline Model
 - Implemented as a separate prompt path in `llm/baseline.py`
-- LLM should receive only one date's 5 raw bars from `spy_open_raw_minutes.csv`
+- LLM should receive only one date's 5 raw bars from `data/generated/spy_open_setup_raw.csv`
 - Outputs decision + explanation without retrieved context
 
 ### 4. RAG System
 - Scaffolded in `rag/`, `prompts/rag_prompt.py`, and `llm/rag.py`
 - Retrieve:
   - relevant strategy rules
-  - similar historical examples from `spy_open_features.csv`
+  - similar historical examples from `data/generated/spy_open_setup_features.csv`
 - Retrieved examples may include their historical labels because this design is testing case-based reasoning
 - The current date must be excluded from retrieval to avoid leakage
 - Augment the raw-minute baseline prompt with retrieved context before LLM inference
@@ -221,16 +223,16 @@ One row per trading day. Serves as the retrieval memory and the ground truth for
 Target prompt design:
 
 1. Baseline prompt
-- Input: one date from `spy_open_raw_minutes.csv`
+- Input: one date from `data/generated/spy_open_setup_raw.csv`
 - Contains only the 5 one-minute bars for that day
 - Asks the LLM to decide `TAKE TRADE` or `PASS TRADE`
 - No retrieved rules or examples
 
 2. RAG prompt
-- Input: the same one-date 5-bar sequence from `spy_open_raw_minutes.csv`
+- Input: the same one-date 5-bar sequence from `data/generated/spy_open_setup_raw.csv`
 - Retrieved context:
   - strategy rules
-  - similar historical rows from `spy_open_features.csv`
+  - similar historical rows from `data/generated/spy_open_setup_features.csv`
   - historical labels for those retrieved rows may be included
 - Exclude the current date from retrieval
 - Do not include the current date's ground-truth label in the prompt
@@ -305,7 +307,7 @@ The virtual environment directory is ignored via `.gitignore` and should not be 
   - volatility
   - volume
   - net movement
-- Produce `spy_open_raw_minutes.csv` and `spy_open_features.csv`
+- Produce `data/generated/spy_open_setup_raw.csv` and `data/generated/spy_open_setup_features.csv`
 
 **RAG & Evaluation Lead**
 - Define trading strategy rules with clear thresholds

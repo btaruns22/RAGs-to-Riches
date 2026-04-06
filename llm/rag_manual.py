@@ -4,7 +4,7 @@ from llm.rag import run_rag
 
 if __name__ == "__main__":
     run_rag(
-        output_csv="rag_results_manual.csv",
+        output_csv="data/generated/rag_results_manual.csv",
         retrieval_mode="manual",
         sample_size=100,
     )

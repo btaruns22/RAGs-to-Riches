@@ -15,8 +15,8 @@ DEFAULT_RETRIEVAL_MODE = "manual"
 def build_rag_messages(
     raw_day: pd.DataFrame,
     feature_row: pd.Series,
-    dataset_path: str = "spy_open_features.csv",
-    raw_csv_path: str = "spy_open_raw_minutes.csv",
+    dataset_path: str = "data/generated/spy_open_setup_features.csv",
+    raw_csv_path: str = "data/generated/spy_open_setup_raw.csv",
     rules_path: str | None = None,
     retrieval_mode: str = DEFAULT_RETRIEVAL_MODE,
     top_k: int = 3,
@@ -57,9 +57,9 @@ def build_rag_messages(
 
 
 def run_rag(
-    raw_csv: str = "spy_open_raw_minutes.csv",
-    features_csv: str = "spy_open_features.csv",
-    output_csv: str = "rag_results.csv",
+    raw_csv: str = "data/generated/spy_open_setup_raw.csv",
+    features_csv: str = "data/generated/spy_open_setup_features.csv",
+    output_csv: str = "data/generated/rag_results.csv",
     rules_path: str | None = None,
     retrieval_mode: str = DEFAULT_RETRIEVAL_MODE,
     sample_size: int | None = None,

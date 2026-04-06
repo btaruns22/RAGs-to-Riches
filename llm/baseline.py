@@ -16,9 +16,9 @@ def build_baseline_messages(raw_day: pd.DataFrame) -> list[dict]:
 
 
 def run_baseline(
-    raw_csv: str = "spy_open_raw_minutes.csv",
-    features_csv: str = "spy_open_features.csv",
-    output_csv: str = "baseline_results.csv",
+    raw_csv: str = "data/generated/spy_open_setup_raw.csv",
+    features_csv: str = "data/generated/spy_open_setup_features.csv",
+    output_csv: str = "data/generated/baseline_results.csv",
     sample_size: int | None = None,
     model: str = MODEL,
 ) -> pd.DataFrame:

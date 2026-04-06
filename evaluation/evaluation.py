@@ -14,7 +14,7 @@ def compute_confidence_stats(df: pd.DataFrame) -> pd.Series:
     return df["confidence"].describe()
 
 
-def evaluate(file_path: str = "baseline_results.csv") -> dict:
+def evaluate(file_path: str = "data/generated/baseline_results.csv") -> dict:
     """Load an experiment CSV and print a few headline metrics."""
     df = pd.read_csv(file_path)
 
@@ -36,10 +36,10 @@ def evaluate(file_path: str = "baseline_results.csv") -> dict:
 
 
 def compare_runs(
-    baseline_path: str = "baseline_results.csv",
-    rag_path: str = "rag_results.csv",
-    features_path: str = "spy_open_features.csv",
-    output_path: str = "comparison_results.csv",
+    baseline_path: str = "data/generated/baseline_results.csv",
+    rag_path: str = "data/generated/rag_results.csv",
+    features_path: str = "data/generated/spy_open_setup_features.csv",
+    output_path: str = "data/generated/comparison_results.csv",
 ) -> pd.DataFrame:
     """Compare baseline and RAG predictions side by side with ground truth."""
     baseline_df = pd.read_csv(baseline_path).rename(

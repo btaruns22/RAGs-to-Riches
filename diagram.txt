@@ -24,8 +24,8 @@ pipeline/features.py
         |
         v
 pipeline/dataset.py
-- build spy_open_raw_minutes.csv
-- build spy_open_features.csv
+- build data/generated/spy_open_setup_raw.csv
+- build data/generated/spy_open_setup_features.csv
 - apply deterministic label
         |
         v
@@ -37,12 +37,12 @@ trading_strategies/breakout_strategy.py
 OUTPUTS AFTER main.py
 =====================
 
-1. spy_open_raw_minutes.csv
+1. data/generated/spy_open_setup_raw.csv
 - raw 1-minute opening bars
 - 5 rows per trading day
 - mainly for inspection / raw signal record
 
-2. spy_open_features.csv
+2. data/generated/spy_open_setup_features.csv
 - one engineered row per trading day
 - contains the ground-truth label
 - contains `vix_at_open`
@@ -52,7 +52,7 @@ OUTPUTS AFTER main.py
 BASELINE FLOW
 =============
 
-One date from spy_open_raw_minutes.csv
+One date from data/generated/spy_open_setup_raw.csv
         |
         v
 5 raw bars for that date
@@ -70,7 +70,7 @@ prompts/prompt_utils.py
 LLM
         |
         v
-baseline_results.csv
+data/generated/baseline_results.csv
         |
         v
 evaluation/evaluation.py
@@ -80,7 +80,7 @@ evaluation/evaluation.py
 RAG FLOW
 ========
 
-One date from spy_open_raw_minutes.csv
+One date from data/generated/spy_open_setup_raw.csv
         |
         v
 prompts/prompt_utils.py
@@ -89,7 +89,7 @@ prompts/prompt_utils.py
         +---------------------------------------------+
         |                                             |
         v                                             v
-rag/knowledge_base.py                           spy_open_features.csv
+rag/knowledge_base.py                           data/generated/spy_open_setup_features.csv
 - load strategy rules                           - historical labeled examples
         |                                             |
         +--------------+------------------------------+
@@ -120,11 +120,11 @@ llm/rag.py
 LLM
                        |
                        v
-rag_results.csv
+data/generated/rag_results.csv
                        |
                        v
 evaluation/evaluation.py
-- compare predicted_label vs true_label in spy_open_features.csv
+- compare predicted_label vs true_label in data/generated/spy_open_setup_features.csv
 
 
 KEY IDEA
@@ -134,7 +134,7 @@ main.py only builds the datasets.
 
 Ground truth comes from:
 - trading_strategies/breakout_strategy.py
-- stored in spy_open_features.csv as label
+- stored in data/generated/spy_open_setup_features.csv as label
 
 RAG happens after the dataset exists.
 
