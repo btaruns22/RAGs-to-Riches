@@ -7,7 +7,8 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-OPENROUTER_EMBEDDINGS_URL = "https://openrouter.ai/api/v1/embeddings"
+OPENROUTER_API_BASE = "https://openrouter.ai/api/v1"
+OPENROUTER_EMBEDDINGS_URL = f"{OPENROUTER_API_BASE}/embeddings"
 DEFAULT_EMBEDDING_MODEL = "openai/text-embedding-3-small"
 
 
