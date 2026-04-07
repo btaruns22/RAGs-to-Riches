@@ -6,6 +6,7 @@ from pathlib import Path
 import chromadb
 import pandas as pd
 
+from project_config import TRAIN_END_DATE
 from services.openrouter_embeddings import embed_texts, get_embedding_model
 from prompts.prompt_utils import raw_minutes_to_text
 
@@ -27,11 +28,15 @@ def _format_feature_summary(row: pd.Series, include_label: bool = True) -> str:
         f"Opening Range Width: {row['opening_range_width']:.4f}",
         f"Volatility: {row['volatility']:.4f}",
         f"Volume: {int(row['volume'])}",
-        f"Volume Ratio: {row['volume_ratio']:.4f}",
+        f"RVOL 10D: {row['rvol_10d']:.4f}",
+        f"VIX At Open: {row.get('vix_at_open', 'NA')}",
         f"Breakout Direction: {row['breakout_direction']}",
     ]
     if include_label and "label" in row:
-        lines.append(f"Label: {row['label']}")
+        lines.append(f"Outcome Label: {row.get('outcome_label', row['label'])}")
+        lines.append(f"Decision Label: {row['label']}")
+        lines.append(f"Max Gain Reached: {row.get('max_gain_reached', 'NA')}")
+        lines.append(f"Max Drawdown Reached: {row.get('max_drawdown_reached', 'NA')}")
     return "\n".join(lines)
 
 
@@ -63,6 +68,7 @@ def build_vector_index(
 ) -> int:
     """Build or refresh the local Chroma collection from the feature dataset."""
     df = pd.read_csv(dataset_path)
+    df = df[df["date"] <= TRAIN_END_DATE].reset_index(drop=True)
     raw_df = pd.read_csv(raw_csv_path)
     client = _get_client(persist_dir)
 
@@ -81,8 +87,12 @@ def build_vector_index(
     metadatas = [
         {
             "date": row["date"],
-            "label": row["label"],
+            "label": row.get("outcome_label", row["label"]),
+            "decision_label": row["label"],
             "breakout_direction": row["breakout_direction"],
+            "max_gain_reached": row.get("max_gain_reached"),
+            "max_drawdown_reached": row.get("max_drawdown_reached"),
+            "vix_at_open": row.get("vix_at_open"),
         }
         for _, row in df.iterrows()
     ]
