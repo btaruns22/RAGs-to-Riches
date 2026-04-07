@@ -8,144 +8,177 @@ Massive Flat Files (S3)
         v                              v
 us_stocks_sip/minute_aggs_v1    us_indices/minute_aggs_v1
         |                              |
-        +--------------+---------------+
-                       |
-                       v
+        |                              +--------------------+
+        |                                                   |
+        v                                                   v
+SPY minute bars                                      I:VIX minute bars
+        |                                                   |
+        +---------------------------+-----------------------+
+                                    |
+                                    v
 services/s3_client.py
-                       |
-                       v
+                                    |
+                                    v
 pipeline/features.py
-- load daily SPY minute bars
-- load daily VIX minute bars (`I:VIX`)
-- convert timestamps to ET
-- keep SPY setup window at 09:30 to 09:34
-- store `vix_at_open` from the VIX 09:30 bar
-- compute per-day features
-        |
-        v
+- setup window: 09:30 to 09:34 ET
+- outcome window: 09:35 to 10:30 ET
+- SPY setup features come from the setup window
+- `vix_at_open` comes from the I:VIX 09:30 bar
+                                    |
+                                    v
 pipeline/dataset.py
 - build data/generated/spy_open_setup_raw.csv
 - build data/generated/spy_open_setup_features.csv
-- apply deterministic label
-        |
-        v
+- compute entry price = 09:34 close
+                                    |
+                                    v
 trading_strategies/breakout_strategy.py
-- momentum breakout rules
-- produces ground-truth label: TAKE or PASS
+- scan 09:35 to 10:30 path minute by minute
+- +0.30% before -0.20% => TAKE
+- stop first => FAIL_FAKEOUT
+- neither by 10:30 => PASS
+- collapse to binary decision label:
+  TAKE => TAKE
+  FAIL_FAKEOUT/PASS => PASS
 
 
 OUTPUTS AFTER main.py
 =====================
 
 1. data/generated/spy_open_setup_raw.csv
-- raw 1-minute opening bars
-- 5 rows per trading day
-- mainly for inspection / raw signal record
+- 5 SPY bars per day
+- 09:30 through 09:34 only
+- direct LLM query input
 
 2. data/generated/spy_open_setup_features.csv
-- one engineered row per trading day
-- contains the ground-truth label
-- contains `vix_at_open`
-- used as retrieval memory and evaluation ground truth
+- one row per day
+- engineered setup summary
+- VIX context
+- outcome-window labels
+- ground-truth answer key
+
+
+TRAIN / TEST SPLIT
+==================
+
+Training corpus for retrieval:
+- 2010-01-04 through 2025-03-01
+
+Testing / evaluation period:
+- 2025-03-02 through present
+
+Rule:
+- test-period rows are never inserted into Chroma
+
+
+VECTOR INDEX BUILD
+==================
+
+data/generated/spy_open_setup_raw.csv
+data/generated/spy_open_setup_features.csv
+        |
+        v
+rag/vector_store.py
+- keep training dates only
+- build one combined document per historical day:
+  - raw 5-bar setup text
+  - engineered summary
+  - historical outcomes and labels
+- embed with OpenRouter:
+  - api base: https://openrouter.ai/api/v1
+  - model: openai/text-embedding-3-small
+        |
+        v
+Local Chroma collection
+data/generated/chroma/
 
 
 BASELINE FLOW
 =============
 
-One date from data/generated/spy_open_setup_raw.csv
-        |
-        v
-5 raw bars for that date
-        |
-        v
-llm/baseline.py
-- take one day's opening sequence
-- no retrieval
+One test date from data/generated/spy_open_setup_raw.csv
         |
         v
 prompts/prompt_utils.py
-- convert the 5 raw bars into prompt text
+- format the 5 raw bars
+        |
+        v
+llm/baseline.py
+- no retrieval
+- evaluate only test-period dates
         |
         v
 LLM
         |
         v
 data/generated/baseline_results.csv
-        |
-        v
-evaluation/evaluation.py
-- compare predicted_label vs true_label
 
 
 RAG FLOW
 ========
 
-One date from data/generated/spy_open_setup_raw.csv
+One test date from data/generated/spy_open_setup_raw.csv
         |
         v
 prompts/prompt_utils.py
-- format the same 5 raw bars
+- format the 5 raw bars
         |
         +---------------------------------------------+
         |                                             |
         v                                             v
-rag/knowledge_base.py                           data/generated/spy_open_setup_features.csv
-- load strategy rules                           - historical labeled examples
+rag/knowledge_base.py                           retrieval memory
+- strategy rules                                training-only historical setups
         |                                             |
-        +--------------+------------------------------+
-                       |
-                       v
-        choose retrieval mode in llm/rag.py
-                       |
-             +---------+---------+
-             |                   |
-             v                   v
-rag/retriever.py          rag/vector_store.py
-- manual feature          - local Chroma index
-  distance retrieval      - OpenRouter embeddings
-- exclude current date    - exclude current date
-                       |
-                       v
+        +---------------------+-----------------------+
+                              |
+                              v
+                     choose retrieval mode
+                              |
+                  +-----------+-----------+
+                  |                       |
+                  v                       v
+           rag/retriever.py         rag/vector_store.py
+           - manual feature         - local Chroma query
+             similarity             - current date excluded
+           - current date           - training corpus only
+             excluded
+                              |
+                              v
 prompts/rag_prompt.py
-- combine:
-  - current raw 5-bar sequence
-  - retrieved rules
-  - retrieved historical examples
-  - retrieved historical labels
-                       |
-                       v
+- current 5 raw bars
+- retrieved rules
+- retrieved historical setups
+- retrieved historical labels and outcomes
+                              |
+                              v
 llm/rag.py
-                       |
-                       v
-LLM
-                       |
-                       v
-data/generated/rag_results.csv
-                       |
-                       v
+- evaluate only test-period dates
+                              |
+                              v
+data/generated/rag_results_*.csv
+
+
+EVALUATION
+==========
+
+baseline results
+rag results
+ground truth from data/generated/spy_open_setup_features.csv
+        |
+        v
 evaluation/evaluation.py
-- compare predicted_label vs true_label in data/generated/spy_open_setup_features.csv
+- compare binary decision label accuracy
+- keep ternary outcome label available for inspection
 
 
 KEY IDEA
 ========
 
-main.py only builds the datasets.
+The LLM never sees the future path for the current test day.
 
-Ground truth comes from:
-- trading_strategies/breakout_strategy.py
-- stored in data/generated/spy_open_setup_features.csv as label
+It only sees:
+- the current day’s 09:30 to 09:34 setup bars
+- rules
+- historical training examples from older dates
 
-RAG happens after the dataset exists.
-
-RAG does NOT create the label.
-RAG uses:
-- one date's raw 5-bar opening sequence
-- strategy rules
-- similar historical rows from other dates
-- VIX regime context via `vix_at_open`
-- historical labels for those other dates
-to help the LLM predict TAKE or PASS.
-
-The current date must be excluded from retrieval.
-Chroma stays local; embeddings come from OpenRouter.
+The outcome window is used only to build the answer key.
