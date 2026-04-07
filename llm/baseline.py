@@ -2,6 +2,7 @@
 import pandas as pd
 from openai import OpenAI
 
+from project_config import TEST_START_DATE
 from prompts.prompt_utils import SYSTEM_PROMPT, parse_llm_output, raw_minutes_to_text
 
 MODEL = "gpt-4.1-mini"
@@ -19,6 +20,7 @@ def run_baseline(
     raw_csv: str = "data/generated/spy_open_setup_raw.csv",
     features_csv: str = "data/generated/spy_open_setup_features.csv",
     output_csv: str = "data/generated/baseline_results.csv",
+    eval_start_date: str = TEST_START_DATE,
     sample_size: int | None = None,
     model: str = MODEL,
 ) -> pd.DataFrame:
@@ -26,6 +28,7 @@ def run_baseline(
     client = OpenAI()
     raw_df = pd.read_csv(raw_csv)
     features_df = pd.read_csv(features_csv)
+    features_df = features_df[features_df["date"] >= eval_start_date].reset_index(drop=True)
 
     if sample_size:
         features_df = features_df.sample(sample_size, random_state=42)
@@ -53,6 +56,7 @@ def run_baseline(
             {
                 "date": row["date"],
                 "true_label": row["label"],
+                "true_outcome_label": row.get("outcome_label"),
                 "predicted_label": parsed["decision"],
                 "confidence": parsed["confidence"],
                 "explanation": parsed["explanation"],
