@@ -2,6 +2,7 @@
 import pandas as pd
 from openai import OpenAI
 
+from project_config import TEST_START_DATE
 from prompts.rag_prompt import build_rag_user_prompt
 from prompts.prompt_utils import SYSTEM_PROMPT, parse_llm_output
 from rag.knowledge_base import load_examples, load_rules
@@ -62,6 +63,7 @@ def run_rag(
     output_csv: str = "data/generated/rag_results.csv",
     rules_path: str | None = None,
     retrieval_mode: str = DEFAULT_RETRIEVAL_MODE,
+    eval_start_date: str = TEST_START_DATE,
     sample_size: int | None = None,
     top_k: int = 3,
     model: str = MODEL,
@@ -71,6 +73,7 @@ def run_rag(
     client = OpenAI()
     raw_df = pd.read_csv(raw_csv)
     features_df = pd.read_csv(features_csv)
+    features_df = features_df[features_df["date"] >= eval_start_date].reset_index(drop=True)
 
     if retrieval_mode == "vector":
         ensure_vector_index(
@@ -114,6 +117,7 @@ def run_rag(
             {
                 "date": row["date"],
                 "true_label": row["label"],
+                "true_outcome_label": row.get("outcome_label"),
                 "predicted_label": parsed["decision"],
                 "confidence": parsed["confidence"],
                 "explanation": parsed["explanation"],
