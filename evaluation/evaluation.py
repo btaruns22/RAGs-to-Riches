@@ -58,7 +58,9 @@ def compare_runs(
             "parse_error": "rag_parse_error",
         }
     )
-    features_df = pd.read_csv(features_path)[["date", "label"]].rename(columns={"label": "ground_truth"})
+    features_df = pd.read_csv(features_path)[["date", "label", "outcome_label"]].rename(
+        columns={"label": "ground_truth", "outcome_label": "ground_truth_outcome"}
+    )
 
     baseline_df = baseline_df.drop(columns=["true_label"], errors="ignore")
     rag_df = rag_df.drop(columns=["true_label"], errors="ignore")
