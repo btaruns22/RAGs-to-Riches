@@ -14,8 +14,11 @@ def _examples_to_text(similar_examples: pd.DataFrame) -> str:
             (
                 f"- {row['date']}: direction={row['breakout_direction']}, "
                 f"net_movement={row['net_movement']:+.2f}%, "
-                f"volume_ratio={row['volume_ratio']:.2f}, "
-                f"label={row.get('label', 'UNKNOWN')}"
+                f"rvol_10d={row['rvol_10d']:.2f}, "
+                f"vix_at_open={row.get('vix_at_open', 'NA')}, "
+                f"outcome={row.get('outcome_label', row.get('label', 'UNKNOWN'))}, "
+                f"max_gain={row.get('max_gain_reached', 'NA')}, "
+                f"max_drawdown={row.get('max_drawdown_reached', 'NA')}"
             )
         )
     return "\n".join(lines)
