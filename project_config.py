@@ -1,0 +1,17 @@
+"""Shared experiment configuration for training/test split and label thresholds."""
+from datetime import date
+
+TRAIN_START_DATE = "2010-01-04"
+TRAIN_END_DATE = "2025-03-01"
+TEST_START_DATE = "2025-03-02"
+DEFAULT_DATA_END_DATE = date.today().isoformat()
+
+PROFIT_TARGET_PCT = 0.003
+STOP_LOSS_PCT = 0.002
+
+FEATURE_WINDOW_START_MINUTE = 9 * 60 + 30
+FEATURE_WINDOW_END_MINUTE = 9 * 60 + 34
+OUTCOME_WINDOW_START_MINUTE = 9 * 60 + 35
+OUTCOME_WINDOW_END_MINUTE = 10 * 60 + 30
+
+RVOL_LOOKBACK_DAYS = 10
