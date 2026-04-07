@@ -6,12 +6,16 @@ import numpy as np
 import pandas as pd
 from zoneinfo import ZoneInfo
 
+from project_config import (
+    FEATURE_WINDOW_END_MINUTE,
+    FEATURE_WINDOW_START_MINUTE,
+    OUTCOME_WINDOW_END_MINUTE,
+    OUTCOME_WINDOW_START_MINUTE,
+)
 from services.s3_client import list_available_keys, read_daily_file
 
 ET = ZoneInfo("America/New_York")
 
-_OPEN_START = 9 * 60 + 30
-_OPEN_END = 9 * 60 + 34
 _STOCKS_PREFIX = "us_stocks_sip/minute_aggs_v1"
 _INDICES_PREFIX = "us_indices/minute_aggs_v1"
 
@@ -73,7 +77,17 @@ def load_vix_day(trade_date: str) -> pd.DataFrame:
 
 def extract_open_window(spy_day: pd.DataFrame) -> pd.DataFrame:
     """Return the 5 bars covering 9:30-9:34 ET."""
-    mask = (spy_day["minute"] >= _OPEN_START) & (spy_day["minute"] <= _OPEN_END)
+    mask = (spy_day["minute"] >= FEATURE_WINDOW_START_MINUTE) & (
+        spy_day["minute"] <= FEATURE_WINDOW_END_MINUTE
+    )
+    return spy_day[mask].reset_index(drop=True)
+
+
+def extract_outcome_window(spy_day: pd.DataFrame) -> pd.DataFrame:
+    """Return the bars covering 9:35-10:30 ET."""
+    mask = (spy_day["minute"] >= OUTCOME_WINDOW_START_MINUTE) & (
+        spy_day["minute"] <= OUTCOME_WINDOW_END_MINUTE
+    )
     return spy_day[mask].reset_index(drop=True)
 
 
@@ -90,10 +104,18 @@ def get_vix_at_open(vix_day: pd.DataFrame) -> Optional[float]:
     if vix_day.empty:
         return None
 
-    bar_930 = vix_day[vix_day["minute"] == _OPEN_START]
+    bar_930 = vix_day[vix_day["minute"] == FEATURE_WINDOW_START_MINUTE]
     if bar_930.empty:
         return None
     return float(bar_930.iloc[0]["open"])
+
+
+def get_entry_price(window: pd.DataFrame) -> Optional[float]:
+    """Return the 09:34 close, used as the simulated entry price."""
+    bar_934 = window[window["minute"] == FEATURE_WINDOW_END_MINUTE]
+    if bar_934.empty:
+        return None
+    return float(bar_934.iloc[0]["close"])
 
 
 def compute_features(
@@ -104,8 +126,8 @@ def compute_features(
     vix_at_open: Optional[float] = None,
 ) -> Optional[dict]:
     """Compute the agreed feature schema for one trading day's opening window."""
-    bar_930 = window[window["minute"] == _OPEN_START]
-    bar_934 = window[window["minute"] == _OPEN_END]
+    bar_930 = window[window["minute"] == FEATURE_WINDOW_START_MINUTE]
+    bar_934 = window[window["minute"] == FEATURE_WINDOW_END_MINUTE]
 
     if bar_930.empty or bar_934.empty:
         return None
@@ -131,7 +153,7 @@ def compute_features(
     volatility = float((window["high"] - window["low"]).mean())
     volume = int(window["volume"].sum())
     avg_vol = float(np.mean(vol_history)) if vol_history else float(volume)
-    volume_ratio = volume / avg_vol if avg_vol > 0 else 1.0
+    rvol_10d = volume / avg_vol if avg_vol > 0 else 1.0
 
     return {
         "date": trade_date,
@@ -146,6 +168,6 @@ def compute_features(
         "breakout_direction": breakout_direction,
         "volatility": round(volatility, 4),
         "volume": volume,
-        "volume_ratio": round(volume_ratio, 4),
+        "rvol_10d": round(rvol_10d, 4),
         "vix_at_open": round(vix_at_open, 4) if vix_at_open is not None else None,
     }
