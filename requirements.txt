@@ -1,5 +1,6 @@
 pandas
 numpy
+matplotlib
 boto3
 massive
 python-dotenv

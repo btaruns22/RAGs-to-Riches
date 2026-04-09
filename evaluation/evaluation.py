@@ -1,5 +1,14 @@
 """Metrics for comparing LLM predictions against deterministic labels."""
+import json
+from pathlib import Path
+
 import pandas as pd
+
+from llm.baseline import MODEL as BASELINE_MODEL
+from llm.rag import MODEL as RAG_MODEL
+from project_config import TEST_START_DATE, TRAIN_END_DATE, TRAIN_START_DATE
+from rag.vector_store import DEFAULT_COLLECTION_NAME, DEFAULT_VECTOR_DIR
+from services.openrouter_embeddings import get_embedding_model
 
 
 def normalize_decision_label(value):
@@ -108,6 +117,7 @@ def compare_three_runs(
     rag_vector_path: str = "data/generated/rag_results_vector.csv",
     features_path: str = "data/generated/spy_open_setup_features.csv",
     output_path: str = "data/generated/comparison_results.csv",
+    summary_path: str = "data/generated/evaluation_summary.json",
 ) -> pd.DataFrame:
     """Compare baseline, manual RAG, and vector RAG side by side with ground truth."""
     features_df = pd.read_csv(features_path)[["date", "label", "outcome_label"]].rename(
@@ -167,16 +177,66 @@ def compare_three_runs(
         comparison_df["rag_vector_predicted_label"] == comparison_df["ground_truth"]
     )
 
+    baseline_accuracy = float(comparison_df["baseline_correct"].mean())
+    rag_manual_accuracy = float(comparison_df["rag_manual_correct"].mean())
+    rag_vector_accuracy = float(comparison_df["rag_vector_correct"].mean())
+    baseline_parse_error_rate = float(comparison_df["baseline_parse_error"].mean())
+    rag_manual_parse_error_rate = float(comparison_df["rag_manual_parse_error"].mean())
+    rag_vector_parse_error_rate = float(comparison_df["rag_vector_parse_error"].mean())
+
     print("\n=== Three-Way Comparison ===")
-    print(f"Baseline Accuracy:   {float(comparison_df['baseline_correct'].mean()):.4f}")
-    print(f"Manual RAG Accuracy: {float(comparison_df['rag_manual_correct'].mean()):.4f}")
-    print(f"Vector RAG Accuracy: {float(comparison_df['rag_vector_correct'].mean()):.4f}")
-    print(f"Baseline Parse Error Rate:   {float(comparison_df['baseline_parse_error'].mean()):.4f}")
-    print(f"Manual RAG Parse Error Rate: {float(comparison_df['rag_manual_parse_error'].mean()):.4f}")
-    print(f"Vector RAG Parse Error Rate: {float(comparison_df['rag_vector_parse_error'].mean()):.4f}")
+    print(f"Baseline Accuracy:   {baseline_accuracy:.4f}")
+    print(f"Manual RAG Accuracy: {rag_manual_accuracy:.4f}")
+    print(f"Vector RAG Accuracy: {rag_vector_accuracy:.4f}")
+    print(f"Baseline Parse Error Rate:   {baseline_parse_error_rate:.4f}")
+    print(f"Manual RAG Parse Error Rate: {rag_manual_parse_error_rate:.4f}")
+    print(f"Vector RAG Parse Error Rate: {rag_vector_parse_error_rate:.4f}")
 
     comparison_df.to_csv(output_path, index=False)
     print(f"\nSaved comparison output to {output_path}")
+
+    summary = {
+        "train_period": {
+            "start_date": TRAIN_START_DATE,
+            "end_date": TRAIN_END_DATE,
+        },
+        "test_period": {
+            "start_date": TEST_START_DATE,
+            "end_date": "present",
+        },
+        "models": {
+            "baseline": {
+                "provider_model": BASELINE_MODEL,
+                "result_file": baseline_path,
+            },
+            "rag_manual": {
+                "provider_model": RAG_MODEL,
+                "retrieval_mode": "manual",
+                "result_file": rag_manual_path,
+            },
+            "rag_vector": {
+                "provider_model": RAG_MODEL,
+                "retrieval_mode": "vector",
+                "embedding_model": get_embedding_model(),
+                "vector_store_dir": DEFAULT_VECTOR_DIR,
+                "collection_name": DEFAULT_COLLECTION_NAME,
+                "result_file": rag_vector_path,
+            },
+        },
+        "metrics": {
+            "baseline_accuracy": baseline_accuracy,
+            "rag_manual_accuracy": rag_manual_accuracy,
+            "rag_vector_accuracy": rag_vector_accuracy,
+            "baseline_parse_error_rate": baseline_parse_error_rate,
+            "rag_manual_parse_error_rate": rag_manual_parse_error_rate,
+            "rag_vector_parse_error_rate": rag_vector_parse_error_rate,
+            "num_evaluated_rows": int(len(comparison_df)),
+        },
+    }
+    Path(summary_path).parent.mkdir(parents=True, exist_ok=True)
+    with open(summary_path, "w", encoding="utf-8") as handle:
+        json.dump(summary, handle, indent=2)
+    print(f"Saved evaluation summary to {summary_path}")
     return comparison_df
 
 
@@ -199,33 +259,16 @@ def summarize_comparison(comparison_df: pd.DataFrame) -> None:
 
 
 def summarize_three_way_comparison(comparison_df: pd.DataFrame) -> None:
-    """Print a compact summary of which method wins on each date."""
-    baseline_only = comparison_df[
-        comparison_df["baseline_correct"]
-        & ~comparison_df["rag_manual_correct"]
-        & ~comparison_df["rag_vector_correct"]
-    ]
-    manual_only = comparison_df[
-        ~comparison_df["baseline_correct"]
-        & comparison_df["rag_manual_correct"]
-        & ~comparison_df["rag_vector_correct"]
-    ]
-    vector_only = comparison_df[
-        ~comparison_df["baseline_correct"]
-        & ~comparison_df["rag_manual_correct"]
-        & comparison_df["rag_vector_correct"]
-    ]
-    all_wrong = comparison_df[
-        ~comparison_df["baseline_correct"]
-        & ~comparison_df["rag_manual_correct"]
-        & ~comparison_df["rag_vector_correct"]
-    ]
+    """Print a simple per-model correct vs wrong day breakdown."""
+    baseline_correct_days = int(comparison_df["baseline_correct"].sum())
+    rag_manual_correct_days = int(comparison_df["rag_manual_correct"].sum())
+    rag_vector_correct_days = int(comparison_df["rag_vector_correct"].sum())
+    total_days = int(len(comparison_df))
 
-    print("\n=== Three-Way Outcome Breakdown ===")
-    print(f"Baseline-only correct days: {len(baseline_only)}")
-    print(f"Manual-only correct days:   {len(manual_only)}")
-    print(f"Vector-only correct days:   {len(vector_only)}")
-    print(f"All three wrong days:       {len(all_wrong)}")
+    print("\n=== Correct vs Wrong Days ===")
+    print(f"Baseline:   correct={baseline_correct_days} wrong={total_days - baseline_correct_days}")
+    print(f"Manual RAG: correct={rag_manual_correct_days} wrong={total_days - rag_manual_correct_days}")
+    print(f"Vector RAG: correct={rag_vector_correct_days} wrong={total_days - rag_vector_correct_days}")
 
 
 if __name__ == "__main__":
