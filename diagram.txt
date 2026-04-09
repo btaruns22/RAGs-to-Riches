@@ -23,7 +23,7 @@ pipeline/features.py
 - setup window: 09:30 to 09:34 ET
 - outcome window: 09:35 to 10:30 ET
 - SPY setup features come from the setup window
-- `vix_at_open` comes from the I:VIX 09:30 bar
+- `vix_at_open` comes from the first available I:VIX bar at or after 09:30
                                     |
                                     v
 pipeline/dataset.py
@@ -62,7 +62,7 @@ TRAIN / TEST SPLIT
 ==================
 
 Training corpus for retrieval:
-- 2010-01-04 through 2025-03-01
+- 2023-02-14 through 2025-03-01
 
 Testing / evaluation period:
 - 2025-03-02 through present
