@@ -1,7 +1,7 @@
 """Shared experiment configuration for training/test split and label thresholds."""
 from datetime import date
 
-TRAIN_START_DATE = "2010-01-04"
+TRAIN_START_DATE = "2023-02-14"
 TRAIN_END_DATE = "2025-03-01"
 TEST_START_DATE = "2025-03-02"
 DEFAULT_DATA_END_DATE = date.today().isoformat()
