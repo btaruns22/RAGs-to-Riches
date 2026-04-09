@@ -1,5 +1,7 @@
 """Build engineered SPY opening-window datasets from Massive flat files."""
 from collections import deque
+from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Deque, Optional
 
 import pandas as pd
@@ -19,6 +21,41 @@ from pipeline.features import (
 )
 
 
+def build_chunk_output_paths(
+    start_date: str,
+    end_date: str,
+    output_dir: str = "data/generated",
+) -> tuple[str, str]:
+    """Return chunk-specific raw/features output paths for a date range."""
+    output_root = Path(output_dir)
+    output_root.mkdir(parents=True, exist_ok=True)
+    prefix = f"{start_date}_{end_date}"
+    features_path = output_root / f"{prefix}_spy_open_setup_features.csv"
+    raw_path = output_root / f"{prefix}_spy_open_setup_raw.csv"
+    return str(features_path), str(raw_path)
+
+
+def _calendar_days_before(date_str: str, days: int = 14) -> str:
+    """Return an ISO date a fixed number of calendar days before date_str."""
+    dt = datetime.strptime(date_str, "%Y-%m-%d").date()
+    return (dt - timedelta(days=days)).isoformat()
+
+
+def _load_previous_close(start_date: str, end_date: str) -> Optional[float]:
+    """Load the most recent close before start_date so chunked runs keep continuity."""
+    lookback_start = _calendar_days_before(start_date, days=14)
+    candidate_dates = list_trading_dates(lookback_start, end_date)
+    previous_dates = [trade_date for trade_date in candidate_dates if trade_date < start_date]
+    if not previous_dates:
+        return None
+
+    seed_date = previous_dates[-1]
+    seed_day = load_spy_day(seed_date)
+    if seed_day.empty:
+        return None
+    return get_regular_close(seed_day)
+
+
 def build_dataset(
     start_date: str = TRAIN_START_DATE,
     end_date: str = DEFAULT_DATA_END_DATE,
@@ -32,7 +69,7 @@ def build_dataset(
 
     feature_rows: list = []
     raw_rows: list = []
-    prev_close: Optional[float] = None
+    prev_close: Optional[float] = _load_previous_close(start_date, end_date)
     vol_history: Deque = deque(maxlen=RVOL_LOOKBACK_DAYS)
 
     for i, trade_date in enumerate(dates, 1):
