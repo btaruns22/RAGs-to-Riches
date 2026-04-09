@@ -100,14 +100,14 @@ def get_regular_close(spy_day: pd.DataFrame) -> Optional[float]:
 
 
 def get_vix_at_open(vix_day: pd.DataFrame) -> Optional[float]:
-    """Return the VIX open price from the 09:30 minute bar."""
+    """Return the first available VIX open price at or after 09:30 ET."""
     if vix_day.empty:
         return None
 
-    bar_930 = vix_day[vix_day["minute"] == FEATURE_WINDOW_START_MINUTE]
-    if bar_930.empty:
+    opening_bar = vix_day[vix_day["minute"] >= FEATURE_WINDOW_START_MINUTE].sort_values("ts").head(1)
+    if opening_bar.empty:
         return None
-    return float(bar_930.iloc[0]["open"])
+    return float(opening_bar.iloc[0]["open"])
 
 
 def get_entry_price(window: pd.DataFrame) -> Optional[float]:
