@@ -35,6 +35,13 @@ def build_rag_user_prompt(
 
     return (
         f"{raw_minutes_to_text(raw_day)}\n"
+        "Instructions for using retrieved context:\n"
+        "- First evaluate the current 09:30 to 09:34 setup on its own.\n"
+        "- Use the strategy rules as the primary decision framework.\n"
+        "- Use historical examples as analogies, not as automatic answers.\n"
+        "- If rules and examples conflict, trust the rules more than the examples.\n"
+        "- If the setup is mixed or unclear, choose PASS TRADE.\n"
+        "- Do not copy a retrieved label blindly. Explain why the current setup is similar or different.\n\n"
         "Retrieved Strategy Rules:\n"
         f"{rules_text}\n\n"
         "Retrieved Similar Historical Examples:\n"
