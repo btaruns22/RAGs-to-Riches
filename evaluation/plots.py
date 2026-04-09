@@ -10,6 +10,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
+MODEL_LABEL = "ChatGPT 4o mini"
+MODEL_FILE_STEM = "chatgpt_4o_mini"
+
 
 def _load_inputs(
     comparison_path: str = "data/generated/comparison_results.csv",
@@ -41,9 +44,9 @@ def plot_accuracy_bars(summary: dict, output_dir: Path) -> None:
     bars = ax.bar(labels, values, color=["#6c8ebf", "#d79b00", "#82b366"])
     ax.set_ylim(0, 1)
     ax.set_ylabel("Accuracy")
-    ax.set_title("Model Accuracy Comparison")
+    ax.set_title(f"{MODEL_LABEL}: Accuracy Comparison")
     ax.bar_label(bars, fmt="%.3f")
-    _save(fig, output_dir / "accuracy_comparison.png")
+    _save(fig, output_dir / f"{MODEL_FILE_STEM}_accuracy_comparison.png")
 
 
 def plot_correct_vs_wrong(comparison_df: pd.DataFrame, output_dir: Path) -> None:
@@ -64,9 +67,9 @@ def plot_correct_vs_wrong(comparison_df: pd.DataFrame, output_dir: Path) -> None
     ax.bar(x + width / 2, wrong_counts, width, label="Wrong", color="#e06666")
     ax.set_xticks(x, labels)
     ax.set_ylabel("Days")
-    ax.set_title("Correct vs Wrong Days")
+    ax.set_title(f"{MODEL_LABEL}: Correct vs Wrong Days")
     ax.legend()
-    _save(fig, output_dir / "correct_vs_wrong_days.png")
+    _save(fig, output_dir / f"{MODEL_FILE_STEM}_correct_vs_wrong_days.png")
 
 
 def plot_confidence_histograms(comparison_df: pd.DataFrame, output_dir: Path) -> None:
@@ -84,8 +87,8 @@ def plot_confidence_histograms(comparison_df: pd.DataFrame, output_dir: Path) ->
         ax.set_xlabel("Confidence")
         ax.set_xlim(0, 100)
     axes[0].set_ylabel("Count")
-    fig.suptitle("Confidence Distribution by Model")
-    _save(fig, output_dir / "confidence_histograms.png")
+    fig.suptitle(f"{MODEL_LABEL}: Confidence Distribution by Model")
+    _save(fig, output_dir / f"{MODEL_FILE_STEM}_confidence_histograms.png")
 
 
 def _plot_confusion_matrix(
@@ -129,8 +132,8 @@ def plot_confusion_matrices(comparison_df: pd.DataFrame, output_dir: Path) -> No
         axes[2], y_true, comparison_df["rag_vector_predicted_label"], "Vector RAG"
     )
     fig.colorbar(image, ax=axes.ravel().tolist(), shrink=0.8)
-    fig.suptitle("Confusion Matrices")
-    _save(fig, output_dir / "confusion_matrices.png")
+    fig.suptitle(f"{MODEL_LABEL}: Confusion Matrices")
+    _save(fig, output_dir / f"{MODEL_FILE_STEM}_confusion_matrices.png")
 
 
 def main(
