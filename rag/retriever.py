@@ -11,7 +11,8 @@ SIMILARITY_COLUMNS = [
     "first_1m_return",
     "net_movement",
     "volatility",
-    "volume_ratio",
+    "rvol_10d",
+    "vix_at_open",
 ]
 
 
@@ -49,10 +50,12 @@ def retrieve_relevant_rules(
 
     if row["breakout_direction"] == "NONE":
         selected.append("No directional breakout should bias the system toward PASS.")
-    if row["volume_ratio"] >= 1.2:
+    if row["rvol_10d"] >= 1.2:
         selected.append("Above-average volume supports a breakout continuation thesis.")
     if abs(row["net_movement"]) < 0.2:
         selected.append("Weak 5-minute net movement reduces conviction in the setup.")
+    if row.get("vix_at_open") is not None and float(row["vix_at_open"]) >= 25:
+        selected.append("Elevated VIX suggests a high-volatility regime that can distort breakout reliability.")
 
     seen = set()
     ordered = []

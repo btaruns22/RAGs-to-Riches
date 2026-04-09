@@ -1,6 +1,7 @@
 """S3 client and raw flat-file access for Massive's S3-compatible endpoint."""
 import io
 import os
+import time
 from typing import Iterator, List
 
 import boto3
@@ -11,6 +12,11 @@ from botocore.exceptions import ClientError
 from dotenv import load_dotenv
 
 load_dotenv()
+
+CONNECT_TIMEOUT_SECONDS = 15
+READ_TIMEOUT_SECONDS = 180
+MAX_DOWNLOAD_RETRIES = 3
+RETRY_BACKOFF_SECONDS = 3
 
 
 def require_env(name: str) -> str:
@@ -34,10 +40,13 @@ def build_s3_client():
     )
 
 
-def build_daily_object_key(trade_date: str) -> str:
+def build_daily_object_key(
+    trade_date: str,
+    dataset_prefix: str = "us_stocks_sip/minute_aggs_v1",
+) -> str:
     """Return the S3 key for a given trade date's minute aggregate flat file."""
     year, month, _ = trade_date.split("-")
-    return f"us_stocks_sip/minute_aggs_v1/{year}/{month}/{trade_date}.csv.gz"
+    return f"{dataset_prefix}/{year}/{month}/{trade_date}.csv.gz"
 
 
 def list_available_keys(prefix: str, limit: int = 31) -> List[str]:
@@ -57,11 +66,12 @@ def list_available_keys(prefix: str, limit: int = 31) -> List[str]:
 
 def read_daily_file(
     trade_date: str,
+    dataset_prefix: str = "us_stocks_sip/minute_aggs_v1",
     chunksize: int = 100_000,
 ) -> Iterator[pd.DataFrame]:
     """Download and stream a daily minute-aggregate flat file as chunked DataFrames."""
     bucket = require_env("MASSIVE_S3_BUCKET")
-    object_key = build_daily_object_key(trade_date)
+    object_key = build_daily_object_key(trade_date, dataset_prefix=dataset_prefix)
     s3_client = build_s3_client()
 
     try:
@@ -70,13 +80,33 @@ def read_daily_file(
             Params={"Bucket": bucket, "Key": object_key},
             ExpiresIn=300,
         )
-        http_response = requests.get(presigned_url, stream=True, timeout=60)
-        http_response.raise_for_status()
-    except (ClientError, requests.HTTPError) as exc:
-        raise RuntimeError(f"Failed to read {object_key}: {exc}") from exc
+    except ClientError as exc:
+        raise RuntimeError(f"Failed to sign {object_key}: {exc}") from exc
+
+    last_exc: Exception | None = None
+    content: bytes | None = None
+    for attempt in range(1, MAX_DOWNLOAD_RETRIES + 1):
+        try:
+            http_response = requests.get(
+                presigned_url,
+                timeout=(CONNECT_TIMEOUT_SECONDS, READ_TIMEOUT_SECONDS),
+            )
+            http_response.raise_for_status()
+            content = http_response.content
+            break
+        except requests.RequestException as exc:
+            last_exc = exc
+            if attempt == MAX_DOWNLOAD_RETRIES:
+                break
+            time.sleep(RETRY_BACKOFF_SECONDS * attempt)
+
+    if content is None:
+        raise RuntimeError(
+            f"Failed to read {object_key} after {MAX_DOWNLOAD_RETRIES} attempts: {last_exc}"
+        ) from last_exc
 
     return pd.read_csv(
-        io.BytesIO(http_response.content),
+        io.BytesIO(content),
         compression="gzip",
         chunksize=chunksize,
     )

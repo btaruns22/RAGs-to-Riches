@@ -3,10 +3,12 @@ __pycache__/
 *.pyc
 .DS_Store
 .env
+.chroma/
 
 # Generated data files — share via Google Drive, not git
 *.csv
 *.csv.gz
+data/generated/chroma/
 
 # Local Claude Code settings
 .claude/settings.local.json

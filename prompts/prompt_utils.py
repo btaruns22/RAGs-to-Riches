@@ -1,5 +1,7 @@
-# prompt_utils.py
+"""Prompt helpers for formatting raw opening bars and parsing LLM output."""
 import re
+
+import pandas as pd
 
 SYSTEM_PROMPT = """
 You are a trading strategy evaluator. Your job is to look at
@@ -7,9 +9,9 @@ market signals from the first 5 minutes of the NYSE trading
 session for SPY and decide whether the conditions are good
 enough to take a trade that day.
 
-You will be given a summary of signals from the opening
-5-minute window. Based on those signals, you need to output
-exactly three things:
+You will be given the five 1-minute bars from the opening
+window (09:30 through 09:34 ET). Based on that sequence, you
+need to output exactly three things:
 
 1. DECISION: Either "TAKE TRADE" or "PASS TRADE". These are
    the only two valid answers.
@@ -32,7 +34,32 @@ EXPLANATION: [Your reasoning here]
 """
 
 
+def raw_minutes_to_text(raw_day: pd.DataFrame) -> str:
+    """Format one trading day's 5 opening bars as the model input."""
+    ordered = raw_day.sort_values("time").reset_index(drop=True)
+    if ordered.empty:
+        return "No opening bars were provided."
+
+    date = ordered.iloc[0]["date"]
+    bars = "\n".join(
+        (
+            f"- {bar['time']}: "
+            f"open={bar['open']:.2f}, high={bar['high']:.2f}, "
+            f"low={bar['low']:.2f}, close={bar['close']:.2f}, "
+            f"volume={int(bar['volume'])}"
+        )
+        for _, bar in ordered.iterrows()
+    )
+
+    return f"""Date: {date}
+Instrument: SPY
+Opening Sequence (09:30 to 09:34 ET):
+{bars}
+"""
+
+
 def features_to_text(row):
+    """Format engineered features for retrieval summaries and legacy prompts."""
     if row["volatility"] > 0.015:
         vol_label = "HIGH"
     elif row["volatility"] > 0.007:

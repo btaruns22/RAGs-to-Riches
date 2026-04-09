@@ -1,7 +1,7 @@
 """Prompt builders for the retrieval-augmented evaluation flow."""
 import pandas as pd
 
-from prompts.prompt_utils import features_to_text
+from prompts.prompt_utils import raw_minutes_to_text
 
 
 def _examples_to_text(similar_examples: pd.DataFrame) -> str:
@@ -14,24 +14,27 @@ def _examples_to_text(similar_examples: pd.DataFrame) -> str:
             (
                 f"- {row['date']}: direction={row['breakout_direction']}, "
                 f"net_movement={row['net_movement']:+.2f}%, "
-                f"volume_ratio={row['volume_ratio']:.2f}, "
-                f"label={row.get('label', 'UNKNOWN')}"
+                f"rvol_10d={row['rvol_10d']:.2f}, "
+                f"vix_at_open={row.get('vix_at_open', 'NA')}, "
+                f"outcome={row.get('outcome_label', row.get('label', 'UNKNOWN'))}, "
+                f"max_gain={row.get('max_gain_reached', 'NA')}, "
+                f"max_drawdown={row.get('max_drawdown_reached', 'NA')}"
             )
         )
     return "\n".join(lines)
 
 
 def build_rag_user_prompt(
-    row: dict,
+    raw_day: pd.DataFrame,
     rules: list[str],
     similar_examples: pd.DataFrame,
 ) -> str:
-    """Combine live features with retrieved rules and similar examples."""
+    """Combine one day's raw opening bars with retrieved context."""
     rules_text = "\n".join(f"- {rule}" for rule in rules) if rules else "- No rules retrieved."
     examples_text = _examples_to_text(similar_examples)
 
     return (
-        f"{features_to_text(row)}\n"
+        f"{raw_minutes_to_text(raw_day)}\n"
         "Retrieved Strategy Rules:\n"
         f"{rules_text}\n\n"
         "Retrieved Similar Historical Examples:\n"

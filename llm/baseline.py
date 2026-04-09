@@ -1,38 +1,55 @@
 """Run the baseline LLM without any retrieved context."""
 import pandas as pd
-from openai import OpenAI
 
-from prompts.prompt_utils import SYSTEM_PROMPT, features_to_text
-from prompts.prompt_utils import parse_llm_output
+from project_config import TEST_START_DATE
+from prompts.prompt_utils import SYSTEM_PROMPT, parse_llm_output, raw_minutes_to_text
+from services.llm_client import build_llm_client
 
-MODEL = "gpt-4.1-mini"
+MODEL = "openai/gpt-4o-mini"
 
 
-def build_baseline_messages(row: dict) -> list[dict]:
+def build_baseline_messages(raw_day: pd.DataFrame) -> list[dict]:
     """Return a simple system/user message pair for the baseline model."""
     return [
         {"role": "system", "content": SYSTEM_PROMPT},
-        {"role": "user", "content": features_to_text(row)},
+        {"role": "user", "content": raw_minutes_to_text(raw_day)},
     ]
 
 
 def run_baseline(
-    input_csv: str = "spy_open_features.csv",
-    output_csv: str = "baseline_results.csv",
+    raw_csv: str = "data/generated/spy_open_setup_raw.csv",
+    features_csv: str = "data/generated/spy_open_setup_features.csv",
+    output_csv: str = "data/generated/baseline_results.csv",
+    eval_start_date: str = TEST_START_DATE,
     sample_size: int | None = None,
     model: str = MODEL,
 ) -> pd.DataFrame:
-    """Run the baseline model on the engineered dataset and save predictions."""
-    client = OpenAI()
-    df = pd.read_csv(input_csv)
+    """Run the baseline model on raw 5-bar sequences and save predictions."""
+    client = build_llm_client()
+    raw_df = pd.read_csv(raw_csv)
+    features_df = pd.read_csv(features_csv)
+    features_df = (
+        features_df[features_df["date"] >= eval_start_date]
+        .sort_values("date")
+        .reset_index(drop=True)
+    )
 
     if sample_size:
-        df = df.sample(sample_size, random_state=42)
+        features_df = (
+            features_df.sample(sample_size, random_state=42)
+            .sort_values("date")
+            .reset_index(drop=True)
+        )
 
     results = []
-    for i, row in df.iterrows():
-        print(f"[{i + 1}/{len(df)}] Processing {row['date']}")
-        messages = build_baseline_messages(row)
+    for i, row in features_df.iterrows():
+        print(f"[{i + 1}/{len(features_df)}] Processing {row['date']}")
+        raw_day = raw_df[raw_df["date"] == row["date"]].copy()
+        if raw_day.empty:
+            print(f"Skipping {row['date']} - no raw bars found")
+            continue
+
+        messages = build_baseline_messages(raw_day)
 
         response = client.chat.completions.create(
             model=model,
@@ -47,6 +64,7 @@ def run_baseline(
             {
                 "date": row["date"],
                 "true_label": row["label"],
+                "true_outcome_label": row.get("outcome_label"),
                 "predicted_label": parsed["decision"],
                 "confidence": parsed["confidence"],
                 "explanation": parsed["explanation"],
@@ -61,4 +79,4 @@ def run_baseline(
 
 
 if __name__ == "__main__":
-    run_baseline(sample_size=100)
+    run_baseline()
