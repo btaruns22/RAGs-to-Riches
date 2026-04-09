@@ -1,6 +1,5 @@
 """Build the RAG prompt using retrieved rules and similar examples."""
 import pandas as pd
-from openai import OpenAI
 
 from project_config import TEST_START_DATE
 from prompts.rag_prompt import build_rag_user_prompt
@@ -8,8 +7,9 @@ from prompts.prompt_utils import SYSTEM_PROMPT, parse_llm_output
 from rag.knowledge_base import load_examples, load_rules
 from rag.retriever import retrieve_relevant_rules, retrieve_similar_examples
 from rag.vector_store import DEFAULT_VECTOR_DIR, ensure_vector_index, query_similar_examples
+from services.llm_client import build_llm_client
 
-MODEL = "gpt-4.1-mini"
+MODEL = "openai/gpt-4o-mini"
 DEFAULT_RETRIEVAL_MODE = "manual"
 
 
@@ -70,10 +70,14 @@ def run_rag(
     vector_dir: str = DEFAULT_VECTOR_DIR,
 ) -> pd.DataFrame:
     """Run the RAG model on raw 5-bar sequences and save predictions."""
-    client = OpenAI()
+    client = build_llm_client()
     raw_df = pd.read_csv(raw_csv)
     features_df = pd.read_csv(features_csv)
-    features_df = features_df[features_df["date"] >= eval_start_date].reset_index(drop=True)
+    features_df = (
+        features_df[features_df["date"] >= eval_start_date]
+        .sort_values("date")
+        .reset_index(drop=True)
+    )
 
     if retrieval_mode == "vector":
         ensure_vector_index(
@@ -83,7 +87,11 @@ def run_rag(
         )
 
     if sample_size:
-        features_df = features_df.sample(sample_size, random_state=42)
+        features_df = (
+            features_df.sample(sample_size, random_state=42)
+            .sort_values("date")
+            .reset_index(drop=True)
+        )
 
     results = []
     for i, row in features_df.iterrows():
@@ -132,4 +140,4 @@ def run_rag(
 
 
 if __name__ == "__main__":
-    run_rag(sample_size=100, retrieval_mode=DEFAULT_RETRIEVAL_MODE)
+    run_rag(retrieval_mode=DEFAULT_RETRIEVAL_MODE)
