@@ -1,11 +1,11 @@
 """Run the baseline LLM without any retrieved context."""
 import pandas as pd
-from openai import OpenAI
 
 from project_config import TEST_START_DATE
 from prompts.prompt_utils import SYSTEM_PROMPT, parse_llm_output, raw_minutes_to_text
+from services.llm_client import build_llm_client
 
-MODEL = "gpt-4.1-mini"
+MODEL = "openai/gpt-4o-mini"
 
 
 def build_baseline_messages(raw_day: pd.DataFrame) -> list[dict]:
@@ -25,13 +25,21 @@ def run_baseline(
     model: str = MODEL,
 ) -> pd.DataFrame:
     """Run the baseline model on raw 5-bar sequences and save predictions."""
-    client = OpenAI()
+    client = build_llm_client()
     raw_df = pd.read_csv(raw_csv)
     features_df = pd.read_csv(features_csv)
-    features_df = features_df[features_df["date"] >= eval_start_date].reset_index(drop=True)
+    features_df = (
+        features_df[features_df["date"] >= eval_start_date]
+        .sort_values("date")
+        .reset_index(drop=True)
+    )
 
     if sample_size:
-        features_df = features_df.sample(sample_size, random_state=42)
+        features_df = (
+            features_df.sample(sample_size, random_state=42)
+            .sort_values("date")
+            .reset_index(drop=True)
+        )
 
     results = []
     for i, row in features_df.iterrows():
@@ -71,4 +79,4 @@ def run_baseline(
 
 
 if __name__ == "__main__":
-    run_baseline(sample_size=100)
+    run_baseline()
