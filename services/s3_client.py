@@ -1,6 +1,7 @@
 """S3 client and raw flat-file access for Massive's S3-compatible endpoint."""
 import io
 import os
+import time
 from typing import Iterator, List
 
 import boto3
@@ -11,6 +12,11 @@ from botocore.exceptions import ClientError
 from dotenv import load_dotenv
 
 load_dotenv()
+
+CONNECT_TIMEOUT_SECONDS = 15
+READ_TIMEOUT_SECONDS = 180
+MAX_DOWNLOAD_RETRIES = 3
+RETRY_BACKOFF_SECONDS = 3
 
 
 def require_env(name: str) -> str:
@@ -74,13 +80,33 @@ def read_daily_file(
             Params={"Bucket": bucket, "Key": object_key},
             ExpiresIn=300,
         )
-        http_response = requests.get(presigned_url, stream=True, timeout=60)
-        http_response.raise_for_status()
-    except (ClientError, requests.HTTPError) as exc:
-        raise RuntimeError(f"Failed to read {object_key}: {exc}") from exc
+    except ClientError as exc:
+        raise RuntimeError(f"Failed to sign {object_key}: {exc}") from exc
+
+    last_exc: Exception | None = None
+    content: bytes | None = None
+    for attempt in range(1, MAX_DOWNLOAD_RETRIES + 1):
+        try:
+            http_response = requests.get(
+                presigned_url,
+                timeout=(CONNECT_TIMEOUT_SECONDS, READ_TIMEOUT_SECONDS),
+            )
+            http_response.raise_for_status()
+            content = http_response.content
+            break
+        except requests.RequestException as exc:
+            last_exc = exc
+            if attempt == MAX_DOWNLOAD_RETRIES:
+                break
+            time.sleep(RETRY_BACKOFF_SECONDS * attempt)
+
+    if content is None:
+        raise RuntimeError(
+            f"Failed to read {object_key} after {MAX_DOWNLOAD_RETRIES} attempts: {last_exc}"
+        ) from last_exc
 
     return pd.read_csv(
-        io.BytesIO(http_response.content),
+        io.BytesIO(content),
         compression="gzip",
         chunksize=chunksize,
     )
