@@ -4,7 +4,7 @@
 RAGs-to-Riches tests whether retrieval improves LLM decision-making on a structured intraday trading task. The system does not ask the model to predict the market from scratch. It asks the model to inspect the first five SPY opening bars, compare that setup to historical examples and rules, and decide whether the setup should be treated as a `TAKE` or `PASS`.
 
 The project now uses a strict train/test separation:
-- training corpus for retrieval: January 4, 2010 through March 1, 2025
+- training corpus for retrieval: February 14, 2023 through March 1, 2025
 - testing/evaluation period: March 2, 2025 through present
 
 The ChromaDB collection is built only from the training set so the test period is never inserted into the retrieval database.
@@ -114,7 +114,7 @@ Columns:
 
 Definitions:
 - `rvol_10d`: opening-window volume divided by the trailing 10-day average opening-window volume
-- `vix_at_open`: `I:VIX` open price from the `09:30` bar in the indices dataset
+- `vix_at_open`: open price from the first available `I:VIX` bar at or after `09:30` ET
 - `entry_price`: SPY `09:34` close
 - `outcome_label`: path-dependent ternary label from the outcome window
 - `label`: binary evaluation target used by the LLM experiment
@@ -140,7 +140,7 @@ This file serves two roles:
 `rag/vector_store.py` builds a local persistent Chroma collection from the training portion of `spy_open_setup_features.csv`.
 
 Important rules:
-- only dates `<= 2025-03-01` are added to Chroma
+- only dates from `2023-02-14` through `2025-03-01` are added to Chroma
 - the test period is never inserted into the collection
 - the current query date is excluded from retrieved examples
 
@@ -175,7 +175,7 @@ The current day’s ground-truth label is never shown in the prompt.
 ## Train/Test Protocol
 
 - train/retrieval corpus:
-  - January 4, 2010 through March 1, 2025
+  - February 14, 2023 through March 1, 2025
 - evaluation period:
   - March 2, 2025 through present
 
@@ -204,7 +204,7 @@ What each command does:
 
 2. `python -m rag.vector_store`
 - builds or refreshes the local Chroma collection
-- indexes only the training subset up to March 1, 2025
+- indexes only the training subset from February 14, 2023 through March 1, 2025
 - uses OpenRouter embeddings via `openai/text-embedding-3-small`
 
 3. `python -m llm.baseline`
@@ -227,6 +227,29 @@ What each command does:
 Note:
 - the evaluator defaults to `rag_results.csv`
 - if you use the wrappers, either rename the desired RAG file or call `compare_runs(...)` with the file you want to compare
+
+## Chunked Dataset Builds
+
+For long Massive runs, build the dataset in chunks instead of one multi-hour pass. `main.py` now accepts date ranges and writes chunk-specific files automatically:
+
+```bash
+python main.py --start 2023-02-14 --end 2023-12-31
+python main.py --start 2024-01-01 --end 2024-12-31
+python main.py --start 2025-01-01 --end 2025-03-01
+python main.py --start 2025-03-02 --end 2026-04-08
+```
+
+Those runs produce files like:
+- `data/generated/2023-02-14_2023-12-31_spy_open_setup_features.csv`
+- `data/generated/2023-02-14_2023-12-31_spy_open_setup_raw.csv`
+
+Then merge them into the canonical combined files:
+
+```bash
+python -m pipeline.merge_chunks
+```
+
+Chunked runs automatically seed `previous_close` from the prior trading day so the first row of each chunk stays consistent with the full-range logic.
 
 ## Tech Stack
 - Python
