@@ -1,31 +1,30 @@
-"""Entry point for building the SPY opening-window dataset."""
-import argparse
+"""Entry point for running the full baseline/RAG evaluation sequence."""
+from evaluation.evaluation import compare_three_runs, summarize_three_way_comparison
+from llm.baseline import run_baseline
+from llm.rag import run_rag
 
-from project_config import DEFAULT_DATA_END_DATE, TRAIN_START_DATE
-from pipeline.dataset import build_chunk_output_paths, build_dataset
+
+def main() -> None:
+    """Run baseline, manual RAG, vector RAG, then evaluate all three."""
+    print("Running baseline...")
+    run_baseline()
+
+    print("\nRunning manual RAG...")
+    run_rag(
+        output_csv="data/generated/rag_results_manual.csv",
+        retrieval_mode="manual",
+    )
+
+    print("\nRunning vector RAG...")
+    run_rag(
+        output_csv="data/generated/rag_results_vector.csv",
+        retrieval_mode="vector",
+    )
+
+    print("\nRunning evaluation...")
+    comparison_df = compare_three_runs()
+    summarize_three_way_comparison(comparison_df)
+
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Build SPY setup datasets for a date range.")
-    parser.add_argument("--start", default=TRAIN_START_DATE, help="Start date in YYYY-MM-DD format")
-    parser.add_argument("--end", default=DEFAULT_DATA_END_DATE, help="End date in YYYY-MM-DD format")
-    parser.add_argument("--output-dir", default="data/generated", help="Directory for generated CSVs")
-    parser.add_argument("--features-path", default=None, help="Explicit output path for features CSV")
-    parser.add_argument("--raw-path", default=None, help="Explicit output path for raw CSV")
-    args = parser.parse_args()
-
-    if args.features_path and args.raw_path:
-        features_path = args.features_path
-        raw_path = args.raw_path
-    else:
-        features_path, raw_path = build_chunk_output_paths(
-            start_date=args.start,
-            end_date=args.end,
-            output_dir=args.output_dir,
-        )
-
-    build_dataset(
-        start_date=args.start,
-        end_date=args.end,
-        features_path=features_path,
-        raw_path=raw_path,
-    )
+    main()
