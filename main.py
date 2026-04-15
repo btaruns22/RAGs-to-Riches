@@ -1,5 +1,5 @@
 """Entry point for running the full baseline/RAG evaluation sequence."""
-from evaluation.evaluation import compare_three_runs, summarize_three_way_comparison
+from evaluation.evaluation import run_full_evaluation
 from llm.baseline import run_baseline
 from llm.rag import run_rag
 
@@ -22,8 +22,7 @@ def main() -> None:
     )
 
     print("\nRunning evaluation...")
-    comparison_df = compare_three_runs()
-    summarize_three_way_comparison(comparison_df)
+    run_full_evaluation()
 
 
 if __name__ == "__main__":
