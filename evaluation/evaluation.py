@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from evaluation.plots import main as generate_plots
 from llm.baseline import MODEL as BASELINE_MODEL
 from llm.rag import MODEL as RAG_MODEL
 from project_config import TEST_START_DATE, TRAIN_END_DATE, TRAIN_START_DATE
@@ -271,6 +272,32 @@ def summarize_three_way_comparison(comparison_df: pd.DataFrame) -> None:
     print(f"Vector RAG: correct={rag_vector_correct_days} wrong={total_days - rag_vector_correct_days}")
 
 
-if __name__ == "__main__":
-    comparison_df = compare_three_runs()
+def run_full_evaluation(
+    baseline_path: str = "data/generated/baseline_results.csv",
+    rag_manual_path: str = "data/generated/rag_results_manual.csv",
+    rag_vector_path: str = "data/generated/rag_results_vector.csv",
+    features_path: str = "data/generated/spy_open_setup_features.csv",
+    comparison_path: str = "data/generated/comparison_results.csv",
+    summary_path: str = "data/generated/evaluation_summary.json",
+    plots_output_dir: str = "data/generated/plots",
+) -> pd.DataFrame:
+    """Run comparison, print summaries, and generate plots from the evaluation artifacts."""
+    comparison_df = compare_three_runs(
+        baseline_path=baseline_path,
+        rag_manual_path=rag_manual_path,
+        rag_vector_path=rag_vector_path,
+        features_path=features_path,
+        output_path=comparison_path,
+        summary_path=summary_path,
+    )
     summarize_three_way_comparison(comparison_df)
+    generate_plots(
+        comparison_path=comparison_path,
+        summary_path=summary_path,
+        output_dir=plots_output_dir,
+    )
+    return comparison_df
+
+
+if __name__ == "__main__":
+    run_full_evaluation()
