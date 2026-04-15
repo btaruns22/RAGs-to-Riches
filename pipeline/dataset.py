@@ -1,4 +1,5 @@
 """Build engineered SPY opening-window datasets from Massive flat files."""
+import argparse
 from collections import deque
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -157,3 +158,48 @@ def build_dataset(
     print(f"Saved {len(raw_df)} rows to {raw_path}")
 
     return features_df
+
+
+def main() -> None:
+    """CLI for building canonical or chunk-specific dataset CSVs."""
+    parser = argparse.ArgumentParser(
+        description="Build engineered SPY opening-window datasets from Massive flat files."
+    )
+    parser.add_argument("--start", default=TRAIN_START_DATE, help="Start date in YYYY-MM-DD format.")
+    parser.add_argument(
+        "--end",
+        default=DEFAULT_DATA_END_DATE,
+        help="End date in YYYY-MM-DD format.",
+    )
+    parser.add_argument(
+        "--chunked-output",
+        action="store_true",
+        help="Write chunk-specific output filenames under data/generated/.",
+    )
+    parser.add_argument(
+        "--features-path",
+        default="data/generated/spy_open_setup_features.csv",
+        help="Output CSV path for engineered features.",
+    )
+    parser.add_argument(
+        "--raw-path",
+        default="data/generated/spy_open_setup_raw.csv",
+        help="Output CSV path for raw opening-window bars.",
+    )
+    args = parser.parse_args()
+
+    features_path = args.features_path
+    raw_path = args.raw_path
+    if args.chunked_output:
+        features_path, raw_path = build_chunk_output_paths(args.start, args.end)
+
+    build_dataset(
+        start_date=args.start,
+        end_date=args.end,
+        features_path=features_path,
+        raw_path=raw_path,
+    )
+
+
+if __name__ == "__main__":
+    main()
