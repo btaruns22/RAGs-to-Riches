@@ -186,8 +186,13 @@ The current day’s ground-truth label is never shown in the prompt.
 Use the project in this order:
 
 ```bash
-python main.py
 python -m rag.vector_store
+python main.py
+```
+
+Alternative manual flow:
+
+```bash
 python -m llm.baseline
 python -m llm.rag_manual
 python -m llm.rag_vector
@@ -196,16 +201,20 @@ python -m evaluation.evaluation
 
 What each command does:
 
-1. `python main.py`
-- pulls SPY and VIX minute data from Massive
-- builds the setup-window raw file
-- builds the feature/outcome file
-- applies the path-dependent `TAKE` / `FAIL_FAKEOUT` / `PASS` labeler
-
-2. `python -m rag.vector_store`
+1. `python -m rag.vector_store`
 - builds or refreshes the local Chroma collection
 - indexes only the training subset from February 14, 2023 through March 1, 2025
 - uses OpenRouter embeddings via `openai/text-embedding-3-small`
+
+2. `python main.py`
+- runs the full experiment pipeline using the existing generated datasets
+- evaluates the baseline model
+- runs manual RAG evaluation
+- runs vector RAG evaluation
+- compares all three runs against the ground truth
+- writes `data/generated/comparison_results.csv`
+- writes `data/generated/evaluation_summary.json`
+- generates plots under `data/generated/plots/`
 
 3. `python -m llm.baseline`
 - evaluates the baseline model on test-period dates only
@@ -221,22 +230,26 @@ What each command does:
 - writes `data/generated/rag_results_vector.csv`
 
 6. `python -m evaluation.evaluation`
-- compares baseline and one chosen RAG result file against the ground truth
+- compares baseline, manual RAG, and vector RAG against the ground truth
 - writes `data/generated/comparison_results.csv`
+- writes `data/generated/evaluation_summary.json`
+- generates plots under `data/generated/plots/`
 
 Note:
-- the evaluator defaults to `rag_results.csv`
-- if you use the wrappers, either rename the desired RAG file or call `compare_runs(...)` with the file you want to compare
+- `main.py` no longer builds the raw/features datasets
+- build or merge those CSVs first, then run the vector store step, then run `main.py`
+- use `python -m pipeline.dataset` if you need to regenerate the dataset CSVs from Massive
+- `python -m evaluation.evaluation` now generates plots automatically after the summary artifacts are written
 
 ## Chunked Dataset Builds
 
-For long Massive runs, build the dataset in chunks instead of one multi-hour pass. `main.py` now accepts date ranges and writes chunk-specific files automatically:
+For long Massive runs, build the dataset in chunks instead of one multi-hour pass:
 
 ```bash
-python main.py --start 2023-02-14 --end 2023-12-31
-python main.py --start 2024-01-01 --end 2024-12-31
-python main.py --start 2025-01-01 --end 2025-03-01
-python main.py --start 2025-03-02 --end 2026-04-08
+python -m pipeline.dataset --start 2023-02-14 --end 2023-12-31 --chunked-output
+python -m pipeline.dataset --start 2024-01-01 --end 2024-12-31 --chunked-output
+python -m pipeline.dataset --start 2025-01-01 --end 2025-03-01 --chunked-output
+python -m pipeline.dataset --start 2025-03-02 --end 2026-04-08 --chunked-output
 ```
 
 Those runs produce files like:
