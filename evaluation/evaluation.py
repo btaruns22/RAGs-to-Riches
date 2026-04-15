@@ -1,14 +1,10 @@
 """Metrics for comparing LLM predictions against deterministic labels."""
 import json
+from datetime import date
 from pathlib import Path
 
 import pandas as pd
-
-from llm.baseline import MODEL as BASELINE_MODEL
-from llm.rag import MODEL as RAG_MODEL
 from project_config import TEST_START_DATE, TRAIN_END_DATE, TRAIN_START_DATE
-from rag.vector_store import DEFAULT_COLLECTION_NAME, DEFAULT_VECTOR_DIR
-from services.openrouter_embeddings import get_embedding_model
 
 
 def normalize_decision_label(value):
@@ -21,6 +17,27 @@ def normalize_decision_label(value):
     if text == "PASS TRADE":
         return "PASS"
     return text
+
+
+def _sanitize_model_name(model_name: str) -> str:
+    """Convert a provider/model string into a filesystem-friendly token."""
+    return model_name.replace("/", "_").replace("-", "_")
+
+
+def _load_runtime_config() -> dict:
+    """Load model and vector-store config lazily to avoid import-time stalls."""
+    from llm.baseline import MODEL as baseline_model
+    from llm.rag import MODEL as rag_model
+    from rag.vector_store import DEFAULT_COLLECTION_NAME, DEFAULT_VECTOR_DIR
+    from services.openrouter_embeddings import get_embedding_model
+
+    return {
+        "baseline_model": baseline_model,
+        "rag_model": rag_model,
+        "vector_collection_name": DEFAULT_COLLECTION_NAME,
+        "vector_dir": DEFAULT_VECTOR_DIR,
+        "embedding_model": get_embedding_model(),
+    }
 
 
 def compute_accuracy(df: pd.DataFrame) -> float:
@@ -117,13 +134,17 @@ def compare_three_runs(
     rag_vector_path: str = "data/generated/rag_results_vector.csv",
     features_path: str = "data/generated/spy_open_setup_features.csv",
     output_path: str = "data/generated/comparison_results.csv",
-    summary_path: str = "data/generated/evaluation_summary.json",
+    summary_path: str | None = None,
 ) -> pd.DataFrame:
     """Compare baseline, manual RAG, and vector RAG side by side with ground truth."""
+    print("Loading runtime model configuration...")
+    runtime_config = _load_runtime_config()
+    print("Loading ground truth features...")
     features_df = pd.read_csv(features_path)[["date", "label", "outcome_label"]].rename(
         columns={"label": "ground_truth", "outcome_label": "ground_truth_outcome"}
     )
 
+    print("Loading baseline results...")
     baseline_df = pd.read_csv(baseline_path).rename(
         columns={
             "predicted_label": "baseline_predicted_label",
@@ -136,6 +157,7 @@ def compare_three_runs(
         normalize_decision_label
     )
 
+    print("Loading manual RAG results...")
     rag_manual_df = pd.read_csv(rag_manual_path).rename(
         columns={
             "predicted_label": "rag_manual_predicted_label",
@@ -148,6 +170,7 @@ def compare_three_runs(
         normalize_decision_label
     )
 
+    print("Loading vector RAG results...")
     rag_vector_df = pd.read_csv(rag_vector_path).rename(
         columns={
             "predicted_label": "rag_vector_predicted_label",
@@ -160,6 +183,7 @@ def compare_three_runs(
         normalize_decision_label
     )
 
+    print("Merging comparison data...")
     comparison_df = (
         features_df
         .merge(baseline_df, on="date", how="left")
@@ -192,6 +216,7 @@ def compare_three_runs(
     print(f"Manual RAG Parse Error Rate: {rag_manual_parse_error_rate:.4f}")
     print(f"Vector RAG Parse Error Rate: {rag_vector_parse_error_rate:.4f}")
 
+    print("Writing comparison CSV...")
     comparison_df.to_csv(output_path, index=False)
     print(f"\nSaved comparison output to {output_path}")
 
@@ -206,20 +231,20 @@ def compare_three_runs(
         },
         "models": {
             "baseline": {
-                "provider_model": BASELINE_MODEL,
+                "provider_model": runtime_config["baseline_model"],
                 "result_file": baseline_path,
             },
             "rag_manual": {
-                "provider_model": RAG_MODEL,
+                "provider_model": runtime_config["rag_model"],
                 "retrieval_mode": "manual",
                 "result_file": rag_manual_path,
             },
             "rag_vector": {
-                "provider_model": RAG_MODEL,
+                "provider_model": runtime_config["rag_model"],
                 "retrieval_mode": "vector",
-                "embedding_model": get_embedding_model(),
-                "vector_store_dir": DEFAULT_VECTOR_DIR,
-                "collection_name": DEFAULT_COLLECTION_NAME,
+                "embedding_model": runtime_config["embedding_model"],
+                "vector_store_dir": runtime_config["vector_dir"],
+                "collection_name": runtime_config["vector_collection_name"],
                 "result_file": rag_vector_path,
             },
         },
@@ -233,7 +258,12 @@ def compare_three_runs(
             "num_evaluated_rows": int(len(comparison_df)),
         },
     }
+    if summary_path is None:
+        stamp = date.today().isoformat()
+        model_token = _sanitize_model_name(runtime_config["baseline_model"])
+        summary_path = f"data/generated/{stamp}_{model_token}_eval_summary.json"
     Path(summary_path).parent.mkdir(parents=True, exist_ok=True)
+    print("Writing evaluation summary JSON...")
     with open(summary_path, "w", encoding="utf-8") as handle:
         json.dump(summary, handle, indent=2)
     print(f"Saved evaluation summary to {summary_path}")

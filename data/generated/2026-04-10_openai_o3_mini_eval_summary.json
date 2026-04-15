@@ -1,0 +1,38 @@
+{
+  "train_period": {
+    "start_date": "2023-02-14",
+    "end_date": "2025-03-01"
+  },
+  "test_period": {
+    "start_date": "2025-03-02",
+    "end_date": "present"
+  },
+  "models": {
+    "baseline": {
+      "provider_model": "openai/o3-mini",
+      "result_file": "data/generated/baseline_results.csv"
+    },
+    "rag_manual": {
+      "provider_model": "openai/o3-mini",
+      "retrieval_mode": "manual",
+      "result_file": "data/generated/rag_results_manual.csv"
+    },
+    "rag_vector": {
+      "provider_model": "openai/o3-mini",
+      "retrieval_mode": "vector",
+      "embedding_model": "openai/text-embedding-3-small",
+      "vector_store_dir": "data/generated/chroma",
+      "collection_name": "spy_open_setup_features",
+      "result_file": "data/generated/rag_results_vector.csv"
+    }
+  },
+  "metrics": {
+    "baseline_accuracy": 0.23857868020304568,
+    "rag_manual_accuracy": 0.25,
+    "rag_vector_accuracy": 0.25,
+    "baseline_parse_error_rate": 0.0,
+    "rag_manual_parse_error_rate": 0.0,
+    "rag_vector_parse_error_rate": 0.0036231884057971015,
+    "num_evaluated_rows": 788
+  }
+}
